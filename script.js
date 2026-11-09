@@ -259,7 +259,7 @@ let git = null, http = null, LightningFS = null;
 let gitFs = null, pfs = null;
 let gitEnabled = false;
 const GIT_DIR = '/repo';
-const CORS_PROXY = '/api/proxy?url=';
+const CORS_PROXY = '/api/proxy';
 
 async function loadGitLibraries() {
   try {

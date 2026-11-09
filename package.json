@@ -1,6 +1,8 @@
 {
   "name": "ideditor",
   "version": "1.0.0",
-  "description": "Browser-based code editor",
-  "private": true
+  "dependencies": {
+    "@isomorphic-git/cors-proxy": "^2.7.1",
+    "express": "^4.21.2"
+  }
 }
