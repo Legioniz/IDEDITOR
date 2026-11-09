@@ -1393,18 +1393,60 @@ Provide helpful answers. Wrap code in markdown blocks.`;
     }
   }
 
-  function addAIMessage(role, text) {
-    const div = document.createElement('div');
-    div.className = 'ai-msg ai-' + role;
-    
-    let formattedText = escapeHtml(text);
-    formattedText = formattedText.replace(/```([\s\S]*?)```/g, '<div class="ai-code-block">$1</div>');
-    div.innerHTML = formattedText;
-    
-    aiMessages.appendChild(div);
-    aiMessages.scrollTop = aiMessages.scrollHeight;
-    return div;
-  }
+function addAIMessage(role, text) {
+  const div = document.createElement('div');
+  div.className = 'ai-msg ai-' + role;
+  
+  // Split the text into normal text and code blocks
+  const parts = text.split(/(```[\s\S]*?```)/g);
+  
+  parts.forEach(part => {
+    if (part.startsWith('```') && part.endsWith('```')) {
+      // It's a code block
+      const code = part.slice(3, -3).replace(/^[a-zA-Z]+\n/, ''); // Remove language tag
+      const codeBlock = document.createElement('div');
+      codeBlock.className = 'ai-code-block';
+      
+      const codePre = document.createElement('pre');
+      codePre.textContent = code;
+      codePre.style.margin = '0 0 8px 0';
+      codePre.style.whiteSpace = 'pre';
+      
+      const applyBtn = document.createElement('button');
+      applyBtn.textContent = '⚡ Apply to Editor';
+      applyBtn.className = 'btn primary';
+      applyBtn.style.cssText = 'height: 28px; font-size: 11px; padding: 0 10px;';
+      
+      // The Action to apply code
+      applyBtn.onclick = () => {
+        if (!editor || !activeFile) return;
+        const model = models[activeFile];
+        if (!model) return;
+        
+        // Replace entire file content (can be undone with Ctrl+Z)
+        model.pushEditOperations(
+          [],
+          [{ range: model.getFullModelRange(), text: code }],
+          () => null
+        );
+        showToast(`Applied to ${basename(activeFile)}!`);
+      };
+      
+      codeBlock.appendChild(codePre);
+      codeBlock.appendChild(applyBtn);
+      div.appendChild(codeBlock);
+    } else {
+      // It's normal text
+      const textDiv = document.createElement('div');
+      textDiv.innerHTML = escapeHtml(part).replace(/\n/g, '<br>');
+      div.appendChild(textDiv);
+    }
+  });
+  
+  aiMessages.appendChild(div);
+  aiMessages.scrollTop = aiMessages.scrollHeight;
+  return div;
+}
 
   btnSendAI.addEventListener('click', sendAIMessage);
   aiInput.addEventListener('keydown', (e) => {
