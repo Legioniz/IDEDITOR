@@ -1,4 +1,6 @@
 {
   "name": "ideditor",
-  "version": "1.0.0"
+  "version": "1.0.0",
+  "description": "Browser-based code editor",
+  "private": true
 }
