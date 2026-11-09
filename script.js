@@ -130,25 +130,30 @@ document.documentElement.setAttribute(
 );
 
 /* =========================================================
-   GIT SETUP (isomorphic-git + LightningFS)
+   GIT SETUP (ESM Imports)
    ========================================================= */
-const gitEnabled =
-  typeof LightningFS !== 'undefined' &&
-  typeof window.git !== 'undefined' &&
-  typeof window.GitHttp !== 'undefined';
-
-let gitFs = null, pfs = null, git = null, http = null;
+let git = null, http = null, LightningFS = null;
+let gitFs = null, pfs = null;
+let gitEnabled = false;
 const GIT_DIR = '/repo';
 const CORS_PROXY = 'https://cors.isomorphic-git.org';
 
-if (gitEnabled) {
+async function loadGitLibraries() {
   try {
+    const [gitModule, httpModule, fsModule] = await Promise.all([
+      import('https://esm.sh/isomorphic-git@1.25.2'),
+      import('https://esm.sh/isomorphic-git@1.25.2/http/web'),
+      import('https://esm.sh/@isomorphic-git/lightning-fs@4.6.0')
+    ]);
+    git = gitModule.default;
+    http = httpModule.default;
+    LightningFS = fsModule.default;
     gitFs = new LightningFS('idEditorFS');
     pfs = gitFs.promises;
-    git = window.git;
-    http = window.GitHttp;
+    gitEnabled = true;
   } catch (e) {
-    console.warn('Git init failed:', e);
+    console.warn('Git libraries failed to load', e);
+    gitEnabled = false;
   }
 }
 
@@ -304,7 +309,10 @@ function ensureModel(name) {
   return model;
 }
 
-function initEditor() {
+async function initEditor() {
+  // Load Git libraries BEFORE initializing UI
+  await loadGitLibraries();
+
   if (!filesList.length) filesList = ['index.html', 'style.css', 'script.js'];
   if (!filesList.includes(activeFile)) activeFile = filesList[0];
 
@@ -1138,10 +1146,12 @@ function wirePreviewControls() {
    GIT — operations
    ========================================================= */
 async function ensureRepoDir() {
+  if (!gitEnabled) return;
   try { await pfs.mkdir(GIT_DIR); } catch (e) {}
 }
 
 async function syncFilesToFS() {
+  if (!gitEnabled) return;
   await ensureRepoDir();
   for (const name of filesList) {
     const content = models[name] ? models[name].getValue() : '';
@@ -1150,6 +1160,7 @@ async function syncFilesToFS() {
 }
 
 async function syncFSToEditor() {
+  if (!gitEnabled) return;
   let files = [];
   try { files = await pfs.readdir(GIT_DIR); } catch (e) { return; }
   const newFiles = files.filter(f => f !== '.git' && !f.startsWith('.'));
@@ -1184,7 +1195,7 @@ async function syncFSToEditor() {
 async function updateGitStatus() {
   const el = document.getElementById('gitStatus');
   if (!el) return;
-  if (!gitEnabled) { el.textContent = 'Git unavailable (CDN failed)'; return; }
+  if (!gitEnabled) { el.textContent = 'Git unavailable'; return; }
   try {
     const matrix = await git.statusMatrix({ fs: gitFs, dir: GIT_DIR });
     const changed = matrix.filter(([, head, workdir, stage]) => head !== workdir || head !== stage);
@@ -1338,7 +1349,7 @@ async function renderGitGraph() {
 function wireGit() {
   if (!gitEnabled) {
     const st = document.getElementById('gitStatus');
-    if (st) st.textContent = 'Git libraries failed to load';
+    if (st) st.textContent = 'Git unavailable (check console)';
     return;
   }
 
@@ -1390,4 +1401,3 @@ function wireGit() {
   });
 
   updateGitStatus();
-}
