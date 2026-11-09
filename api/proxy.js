@@ -22,12 +22,16 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
   
   // 2. Extract the target URL. Git's URL contains its own query string, so
-  // Vercel may expose that query separately from `url`.
-  let rawTargetUrl = Array.isArray(req.query.url) ? req.query.url.join('?') : req.query.url;
+  // Vercel may split it from the outer proxy query.
+  const requestUrl = typeof req.url === 'string' ? req.url : '';
+  const rawQueryTarget = requestUrl.match(/[?&]url=([^&]+(?:&service=[^&]*)?)/i);
+  let rawTargetUrl = rawQueryTarget ? rawQueryTarget[1] : (Array.isArray(req.query.url) ? req.query.url.join('?') : req.query.url);
   if (typeof rawTargetUrl !== 'string' || !rawTargetUrl.trim()) {
     return res.status(400).json({ error: 'Missing URL parameter. Expected an absolute http(s) URL.' });
   }
-  rawTargetUrl = rawTargetUrl.trim().replace(/^https:\/(?!\/)/, 'https://').replace(/^http:\/(?!\/)/, 'http://');
+  rawTargetUrl = rawTargetUrl.trim();
+  try { rawTargetUrl = decodeURIComponent(rawTargetUrl); } catch (e) {}
+  rawTargetUrl = rawTargetUrl.replace(/^https:\/(?!\/)/, 'https://').replace(/^http:\/(?!\/)/, 'http://');
 
   let targetUrl;
 
