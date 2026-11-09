@@ -22,8 +22,8 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
   
   // 2. Extract the target URL
-  // Vercel passes the URL via the query parameter because of our vercel.json rewrite
-  const rawTargetUrl = Array.isArray(req.query.url) ? req.query.url[0] : req.query.url;
+  // Vercel passes the rewritten path as the url query parameter.
+  const rawTargetUrl = Array.isArray(req.query.url) ? req.query.url.join('?') : req.query.url;
   if (typeof rawTargetUrl !== 'string' || !rawTargetUrl.trim()) {
     return res.status(400).json({ error: 'Missing URL parameter. Expected an absolute http(s) URL.' });
   }
@@ -60,6 +60,7 @@ export default async function handler(req, res) {
       if (req.headers[name]) headers[name] = req.headers[name];
     }
     headers['user-agent'] = headers['user-agent'] || 'git/2.39.2';
+    headers['accept'] = headers['accept'] || '*/*';
     
     // 4. Buffer the body (fixes streaming 400 errors)
     const bodyBuffer = ['GET', 'HEAD'].includes(req.method) ? null : await buffer(req);
