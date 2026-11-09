@@ -884,6 +884,7 @@ async function gitClone() {
   localStorage.setItem('idEditor.gitRepoName', parsed.repo);
   
   showToast('Cloned successfully!');
+  addTermLine('Clone successful', 'success');
   updateGitStatus();
 }
 
