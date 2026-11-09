@@ -1072,9 +1072,19 @@ function addTermLine(msg, type = '') {
   termOutput.scrollTop = termOutput.scrollHeight;
 }
 
+function parseTerminalArgs(raw) {
+  const args = [];
+  const pattern = /"([^"\\]*(?:\\.[^"\\]*)*)"|'([^']*)'|(\S+)/g;
+  let match;
+  while ((match = pattern.exec(raw)) !== null) {
+    args.push(match[1] !== undefined ? match[1].replace(/\\"/g, '"') : match[2] !== undefined ? match[2] : match[3]);
+  }
+  return args;
+}
+
 async function executeCommand(raw) {
   addTermLine(`$ ${raw}`);
-  const args = raw.split(/\s+/);
+  const args = parseTerminalArgs(raw);
   const cmd = args[0].toLowerCase();
   
   switch (cmd) {
@@ -1196,11 +1206,16 @@ async function handleGitCommand(args) {
   }
   else if (sub === 'clone') {
     if (!args[2]) return addTermLine('Usage: git clone <url>', 'error');
+
+    const repoUrl = args.slice(2).join(' ').trim();
+    let parsedUrl;
+    try { parsedUrl = new URL(repoUrl); } catch (e) { return addTermLine('Invalid repository URL', 'error'); }
+    if (!['http:', 'https:'].includes(parsedUrl.protocol)) return addTermLine('Repository URL must use http or https', 'error');
+
+    localStorage.setItem(GIT_URL_KEY, repoUrl);
+    document.getElementById('gitRepoUrl').value = repoUrl;
     
-    localStorage.setItem(GIT_URL_KEY, args[2]);
-    document.getElementById('gitRepoUrl').value = args[2];
-    
-    addTermLine(`Cloning: ${args[2]}...`, 'info');
+    addTermLine(`Cloning: ${repoUrl}...`, 'info');
     
     const loader = document.createElement('div');
     loader.className = 'term-line term-info';
@@ -1313,12 +1328,16 @@ function wireGit() {
     try {
       const files = await pfs.readdir(GIT_DIR);
       if (!files.includes('.git')) { 
-        if (confirm('Clone this repository into the editor? Current files will be replaced.')) gitClone(); 
+        if (confirm('Clone this repository into the editor? Current files will be replaced.')) {
+          gitClone().catch(e => addTermLine('Clone failed: ' + (e && e.message ? e.message : String(e)), 'error'));
+        }
       } else {
         updateGitStatus();
       }
     } catch (e) { 
-      if (confirm('Clone this repository into the editor? Current files will be replaced.')) gitClone(); 
+      if (confirm('Clone this repository into the editor? Current files will be replaced.')) {
+        gitClone().catch(err => addTermLine('Clone failed: ' + (err && err.message ? err.message : String(err)), 'error'));
+      }
     }
   });
   
@@ -1336,6 +1355,18 @@ function wireGit() {
 }
 
 async function ensureRepoDir() { if (!gitEnabled) return; try { await pfs.mkdir(GIT_DIR); } catch (e) {} }
+
+async function removeRepoDir(dir) {
+  let entries;
+  try { entries = await pfs.readdir(dir); } catch (e) { return; }
+  for (const entry of entries) {
+    const path = `${dir}/${entry}`;
+    const stat = await pfs.stat(path);
+    if (stat.isDirectory()) await removeRepoDir(path);
+    else await pfs.unlink(path);
+  }
+  await pfs.rmdir(dir);
+}
 
 async function syncFilesToFS() {
   if (!gitEnabled) return; await ensureRepoDir();
@@ -1441,20 +1472,24 @@ async function gitClone() {
   if (!gitEnabled) throw new Error('Git not available');
   const { url, token } = getRepoConfig(); 
   if (!url) throw new Error('No repository URL provided.');
+  let parsedUrl;
+  try { parsedUrl = new URL(url); } catch (e) { throw new Error('Invalid repository URL.'); }
+  if (!['http:', 'https:'].includes(parsedUrl.protocol)) throw new Error('Repository URL must use http or https.');
   
   const cloneTask = (async () => {
-    try { await pfs.rmdir(GIT_DIR, { recursive: true }); } catch (e) {}
+    await removeRepoDir(GIT_DIR);
     return await git.clone({ 
       fs: gitFs, http, dir: GIT_DIR, corsProxy: CORS_PROXY, 
-      url, 
+      url: parsedUrl.toString(), 
       singleBranch: true, 
       depth: 1, 
       onAuth: token ? () => ({ username: 'x-access-token', password: token }) : undefined
     });
   })();
 
+  let timeoutId;
   const timeoutTask = new Promise((_, reject) => {
-    setTimeout(() => reject(new Error("Timeout: The repository is too large for the proxy, or Vercel dropped the connection.")), 45000);
+    timeoutId = setTimeout(() => reject(new Error("Timeout: The repository is too large for the proxy, or Vercel dropped the connection.")), 45000);
   });
 
   try {
@@ -1462,11 +1497,14 @@ async function gitClone() {
     await syncFSToEditor(); 
     showToast('Cloned'); 
     updateGitStatus();
+    addTermLine('Clone successful', 'success');
   } catch (e) { 
     console.error(e); 
     const message = e && e.message ? e.message : String(e);
     showToast('Clone failed: ' + message);
     throw e; 
+  } finally {
+    clearTimeout(timeoutId);
   }
 }
 
