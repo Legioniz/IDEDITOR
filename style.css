@@ -739,3 +739,23 @@ html[data-theme="light"] select.git-input {
   background-color: #ffffff !important;
   -webkit-text-fill-color: #1e1e1e;
 }
+/* Fix for mobile select dropdown options */
+select.git-input {
+  color: var(--fg) !important;
+  background-color: #1b1b1b !important;
+  -webkit-text-fill-color: var(--fg);
+}
+select.git-input option {
+  background-color: #1b1b1b !important;
+  color: var(--fg) !important;
+}
+
+html[data-theme="light"] select.git-input {
+  color: #1e1e1e !important;
+  background-color: #ffffff !important;
+  -webkit-text-fill-color: #1e1e1e;
+}
+html[data-theme="light"] select.git-input option {
+  background-color: #ffffff !important;
+  color: #1e1e1e !important;
+}

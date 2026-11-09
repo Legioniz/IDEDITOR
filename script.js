@@ -280,33 +280,63 @@ async function initFirebase() {
     const avatarEl = document.getElementById('userAvatar');
     const nameEl = document.getElementById('userName');
     
+    // Helper function to update the UI safely
+    const updateAuthUI = (user) => {
+      if (user) {
+        loggedOutUI.style.display = 'none';
+        loggedInUI.style.display = 'block';
+        
+        const displayName = user.displayName || (user.email ? user.email.split('@')[0] : 'User');
+        nameEl.textContent = displayName;
+        
+        // Use Google Profile Photo if available
+        if (user.photoURL) {
+          avatarEl.style.backgroundImage = `url(${user.photoURL})`;
+          avatarEl.style.backgroundSize = 'cover';
+          avatarEl.textContent = ''; // Hide the letter
+        } else {
+          avatarEl.textContent = displayName.charAt(0).toUpperCase();
+          avatarEl.style.backgroundImage = 'none';
+        }
+      } else {
+        loggedInUI.style.display = 'none';
+        loggedOutUI.style.display = 'block';
+      }
+    };
+    
+    // 1. Check if user is already logged in (fixes redirect UI delay)
+    if (fbAuth.currentUser) {
+      updateAuthUI(fbAuth.currentUser);
+      fbUser = fbAuth.currentUser;
+      loadGitSettingsFromCloud(fbUser.uid);
+    }
+    
+    // 2. Handle Redirect Results (when coming back from Google)
     getRedirectResult(fbAuth).then((result) => {
-      if (result && result.user) showToast('Logged in as ' + result.user.displayName);
-    }).catch((error) => console.error('Redirect login error:', error));
+      if (result && result.user) {
+        updateAuthUI(result.user);
+        fbUser = result.user;
+        showToast('Logged in as ' + (result.user.displayName || 'User'));
+      }
+    }).catch((error) => {
+      console.error('Redirect login error:', error);
+      showToast('Login error: ' + error.message);
+    });
     
+    // 3. Listen for Auth Changes
     onAuthStateChanged(fbAuth, (user) => {
-  fbUser = user;
-  if (user) {
-    loggedOutUI.style.display = 'none';
-    loggedInUI.style.display = 'block';
+      fbUser = user;
+      updateAuthUI(user);
+      if (user) {
+        addTermLine('Firebase Connected: ' + (user.displayName || 'User'), 'success');
+        loadGitSettingsFromCloud(user.uid);
+      }
+    });
     
-    // Safe check for email
-    const emailName = user.email ? user.email.split('@')[0] : 'User';
-    const displayName = user.displayName || emailName;
-    
-    nameEl.textContent = displayName;
-    avatarEl.textContent = displayName.charAt(0).toUpperCase();
-    addTermLine('Firebase Connected: ' + displayName, 'success');
-    
-    loadGitSettingsFromCloud(user.uid);
-  } else {
-    loggedInUI.style.display = 'none';
-    loggedOutUI.style.display = 'block';
-  }
-});
     firebaseEnabled = true;
   } catch (e) {
     console.warn('Firebase failed to load', e);
+    addTermLine('Firebase failed to load', 'error');
   }
 }
 
