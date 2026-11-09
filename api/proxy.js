@@ -1,6 +1,6 @@
 export const config = {
   api: {
-    bodyParser: false, // CRITICAL: Prevents Vercel from corrupting the Git binary data
+    bodyParser: false, // CRITICAL: Prevents Vercel from corrupting Git binary data
   },
 };
 
@@ -28,8 +28,10 @@ export default async function handler(req, res) {
     delete headers['host'];
     delete headers['connection'];
     delete headers['content-length'];
+    
+    // Set the required headers for GitHub
     headers['host'] = new URL(targetUrl).host;
-    headers['User-Agent'] = 'git/2.39.2'; // Required by GitHub
+    headers['User-Agent'] = 'git/2.39.2';
     
     // 4. Fetch from GitHub
     const response = await fetch(targetUrl, {
@@ -43,7 +45,6 @@ export default async function handler(req, res) {
     // 5. Send the response back
     res.status(response.status);
     response.headers.forEach((value, key) => {
-      // Don't forward encoding headers, Vercel handles compression
       if (key.toLowerCase() !== 'content-encoding' && key.toLowerCase() !== 'transfer-encoding') {
         res.setHeader(key, value);
       }
