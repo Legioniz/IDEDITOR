@@ -1,0 +1,8 @@
+{
+  "name": "idEditor-cors-proxy",
+  "version": "1.0.0",
+  "dependencies": {
+    "@isomorphic-git/cors-proxy": "^2.7.1",
+    "express": "^4.21.2"
+  }
+}

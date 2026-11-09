@@ -247,7 +247,7 @@ let git = null, http = null, LightningFS = null;
 let gitFs = null, pfs = null;
 let gitEnabled = false;
 const GIT_DIR = '/repo';
-const CORS_PROXY = 'https://cors.isomorphic-git.org';
+const CORS_PROXY = '/api/proxy';
 
 async function loadGitLibraries() {
   try {
@@ -931,12 +931,13 @@ function replaceAll() {
 function wireRun() { document.getElementById('btnRun').addEventListener('click', run); }
 
 /* =========================================================
-   CONSOLE & TERMINAL
+   CONSOLE & TERMINAL (Refactored Global Panel)
    ========================================================= */
 const consoleEl = document.getElementById('console');
 const termEl = document.getElementById('terminal');
 const termOutput = document.getElementById('termOutput');
 const termInput = document.getElementById('termInput');
+const bottomPanel = document.getElementById('bottomPanel');
 let activePanel = 'console'; // 'console' or 'terminal'
 
 function setActivePanel(panel) {
@@ -945,7 +946,8 @@ function setActivePanel(panel) {
   document.getElementById('btnTabTerminal').classList.toggle('active', panel === 'terminal');
   
   if (panel === 'console') {
-    consoleEl.style.display = consoleEl.classList.contains('show') ? 'block' : 'none';
+    consoleEl.style.display = 'block';
+    consoleEl.classList.add('show');
     termEl.style.display = 'none';
   } else {
     consoleEl.style.display = 'none';
@@ -955,9 +957,28 @@ function setActivePanel(panel) {
 }
 
 function wireConsole() {
+  // Toggle global panel button
+  document.getElementById('btnTogglePanel').addEventListener('click', () => {
+    bottomPanel.classList.toggle('hidden');
+    if (!bottomPanel.classList.contains('hidden')) {
+      if (activePanel === 'terminal') termInput.focus();
+      if (editor) editor.layout();
+    } else {
+      if (editor) editor.layout();
+    }
+  });
+
+  // Close panel button
+  document.getElementById('btnClosePanel').addEventListener('click', () => {
+    bottomPanel.classList.add('hidden');
+    if (editor) editor.layout();
+  });
+
+  // Tabs
   document.getElementById('btnTabConsole').addEventListener('click', () => setActivePanel('console'));
   document.getElementById('btnTabTerminal').addEventListener('click', () => setActivePanel('terminal'));
 
+  // Copy/Clear
   document.getElementById('btnCopyPanel').addEventListener('click', async () => {
     const text = activePanel === 'console' 
       ? Array.from(consoleEl.children).map(el => el.textContent).join('\n')
@@ -971,6 +992,7 @@ function wireConsole() {
     else termOutput.innerHTML = '';
   });
 
+  // Terminal Input
   termInput.addEventListener('keydown', e => {
     if (e.key === 'Enter') {
       const cmd = termInput.value.trim();
@@ -1097,7 +1119,6 @@ async function handleGitCommand(args) {
     } catch (e) { addTermLine('Error: ' + e.message, 'error'); }
   } 
   else if (sub === 'commit') {
-    // Parse `git commit -m "message"`
     const msgIndex = args.indexOf('-m');
     if (msgIndex === -1 || !args[msgIndex + 1]) return addTermLine('Usage: git commit -m "message"', 'error');
     const msg = args.slice(msgIndex + 1).join(' ').replace(/^["']|["']$/g, '');
@@ -1138,7 +1159,7 @@ async function handleFirebaseCommand(args) {
   }
 }
 
-function clearConsole() { if (!consoleEl) return; consoleEl.innerHTML = ''; consoleEl.classList.remove('show'); const head = document.getElementById('consoleHead'); if (head) head.classList.remove('has-new'); }
+function clearConsole() { if (!consoleEl) return; consoleEl.innerHTML = ''; const head = document.getElementById('consoleHead'); if (head) head.classList.remove('has-new'); }
 function addConsoleLine(type, msg) {
   if (!consoleEl) return; const row = document.createElement('div'); row.className = 'cl cl-' + type;
   row.textContent = (type === 'error' ? '✖ ' : type === 'warn' ? '⚠ ' : '') + msg;
@@ -1146,8 +1167,17 @@ function addConsoleLine(type, msg) {
     const m = msg.match(/@\s*line\s+(\d+)/i);
     if (m) { const line = parseInt(m[1], 10); row.classList.add('cl-clickable'); row.title = 'Jump to line ' + line; row.addEventListener('click', () => { if (!editor) return; editor.revealLineInCenter(line); editor.setPosition({ lineNumber: line, column: 1 }); editor.focus(); }); }
   }
-  consoleEl.appendChild(row); consoleEl.classList.add('show');
-  const head = document.getElementById('consoleHead'); if (head && consoleEl.classList.contains('collapsed')) head.classList.add('has-new');
+  consoleEl.appendChild(row); 
+  const head = document.getElementById('consoleHead'); 
+  if (head && activePanel !== 'console') head.classList.add('has-new');
+  
+  // Auto open panel on error
+  if (type === 'error' && bottomPanel.classList.contains('hidden')) {
+    bottomPanel.classList.remove('hidden');
+    setActivePanel('console');
+    if (editor) editor.layout();
+  }
+  
   consoleEl.scrollTop = consoleEl.scrollHeight;
 }
 window.addEventListener('message', e => { const d = e.data; if (!d || d.__preview !== true) return; addConsoleLine(d.type, d.msg); });

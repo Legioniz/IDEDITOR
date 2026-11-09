@@ -17,6 +17,9 @@
       <button class="icon-btn" id="btnCmdPalette" title="Command Palette (Ctrl+Shift+P)" aria-label="Command Palette">
         <svg viewBox="0 0 24 24" width="18" height="18"><path d="M8 9l3 3-3 3M13 15h4" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/><rect x="3" y="4" width="18" height="16" rx="2" stroke="currentColor" stroke-width="2" fill="none"/></svg>
       </button>
+      <button class="icon-btn" id="btnTogglePanel" title="Toggle Terminal/Console" aria-label="Toggle Panel">
+        <svg viewBox="0 0 24 24" width="18" height="18"><path d="M4 17l6-6-6-6M12 19h8" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
       <button class="icon-btn" id="btnFind" title="Find (Ctrl+F)" aria-label="Find">
         <svg viewBox="0 0 24 24" width="18" height="18"><circle cx="11" cy="11" r="6" stroke="currentColor" stroke-width="2" fill="none"/><path d="M20 20l-4.2-4.2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
       </button>
@@ -187,35 +190,39 @@
               </div>
             </div>
             <iframe id="preview"></iframe>
-            
-            <!-- Unified Console/Terminal Panel -->
-            <div class="console-head" id="consoleHead">
-              <div class="panel-tabs">
-                <button class="panel-tab active" id="btnTabConsole">Console</button>
-                <button class="panel-tab" id="btnTabTerminal">Terminal</button>
-              </div>
-              <div class="console-actions">
-                <button class="icon-btn sm" id="btnCopyPanel" title="Copy output" aria-label="Copy output">
-                  <svg viewBox="0 0 24 24" width="16" height="16"><rect x="9" y="9" width="11" height="11" rx="2" stroke="currentColor" stroke-width="2" fill="none"/><path d="M5 15V5a2 2 0 0 1 2-2h10" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/></svg>
-                </button>
-                <button class="icon-btn sm" id="btnClearPanel" title="Clear output" aria-label="Clear output">
-                  <svg viewBox="0 0 24 24" width="16" height="16"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                </button>
-              </div>
-            </div>
+          </div>
+        </div>
 
-            <!-- Console View -->
-            <div class="console" id="console"></div>
-
-            <!-- Terminal View -->
-            <div class="terminal" id="terminal" style="display: none;">
-              <div class="term-output" id="termOutput"></div>
-              <div class="term-input-wrap">
-                <span class="term-prompt">$</span>
-                <input type="text" id="termInput" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Type a command...">
-              </div>
+        <!-- Refactored Global Bottom Panel -->
+        <div class="bottom-panel hidden" id="bottomPanel">
+          <div class="console-head" id="consoleHead">
+            <div class="panel-tabs">
+              <button class="panel-tab active" id="btnTabConsole">Console</button>
+              <button class="panel-tab" id="btnTabTerminal">Terminal</button>
             </div>
-            
+            <div class="console-actions">
+              <button class="icon-btn sm" id="btnCopyPanel" title="Copy output" aria-label="Copy output">
+                <svg viewBox="0 0 24 24" width="16" height="16"><rect x="9" y="9" width="11" height="11" rx="2" stroke="currentColor" stroke-width="2" fill="none"/><path d="M5 15V5a2 2 0 0 1 2-2h10" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/></svg>
+              </button>
+              <button class="icon-btn sm" id="btnClearPanel" title="Clear output" aria-label="Clear output">
+                <svg viewBox="0 0 24 24" width="16" height="16"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              </button>
+              <button class="icon-btn sm" id="btnClosePanel" title="Close Panel" aria-label="Close Panel">
+                <svg viewBox="0 0 24 24" width="16" height="16"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+              </button>
+            </div>
+          </div>
+
+          <!-- Console View -->
+          <div class="console" id="console"></div>
+
+          <!-- Terminal View -->
+          <div class="terminal" id="terminal" style="display: none;">
+            <div class="term-output" id="termOutput"></div>
+            <div class="term-input-wrap">
+              <span class="term-prompt">$</span>
+              <input type="text" id="termInput" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Type a command...">
+            </div>
           </div>
         </div>
 
