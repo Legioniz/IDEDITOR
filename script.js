@@ -591,8 +591,12 @@ function renderSidebarFiles() {
   }
 
   const list = document.getElementById('sideFiles'); list.innerHTML = '';
+  const filter = (document.getElementById('fileFilter')?.value || '').trim().toLowerCase();
+  const visibleFiles = filter
+    ? filesList.filter(name => name.toLowerCase().includes(filter))
+    : filesList;
   const tree = {};
-  filesList.forEach(path => {
+  visibleFiles.forEach(path => {
     const parts = path.split('/');
     let current = tree;
     parts.forEach((part, i) => {
@@ -647,7 +651,13 @@ function renderSidebarFiles() {
     });
   }
 
-  buildNode(tree, '', list);
+  if (visibleFiles.length) buildNode(tree, '', list);
+  else {
+    const empty = document.createElement('div');
+    empty.className = 'file-filter-empty';
+    empty.textContent = 'No matching files';
+    list.appendChild(empty);
+  }
   filesList.forEach(markDirtyState);
 }
 
@@ -777,6 +787,14 @@ function wireSidebar() {
   
   document.getElementById('btnNewFile').addEventListener('click', promptNewFile);
   document.getElementById('btnNewFolder').addEventListener('click', promptNewFolder);
+  const fileFilter = document.getElementById('fileFilter');
+  fileFilter.addEventListener('input', renderSidebarFiles);
+  fileFilter.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && fileFilter.value) {
+      fileFilter.value = '';
+      renderSidebarFiles();
+    }
+  });
   
   document.getElementById('btnReset').addEventListener('click', () => {
     if (!confirm('Reset all files and settings to defaults?')) return;
