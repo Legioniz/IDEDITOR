@@ -1,34 +1,37 @@
 # IDEDITOR 📝
 
-A powerful, fully browser-based code editor designed for both mobile and desktop. Write HTML, CSS, and JavaScript, preview your code live, and manage your GitHub repositories directly from your browser without any backend servers.
+A powerful, fully browser-based, serverless code editor. Write HTML, CSS, and JavaScript, preview your code live, manage GitHub repositories, and use AI to write code—all directly from your browser without any backend servers.
 
-![IDEDITOR Preview](https://img.shields.io/badge/Version-1.0.0-blue.svg)
+![Version](https://img.shields.io/badge/Version-2.0.0-blue.svg)
 ![License](https://img.shields.io/badge/License-MIT-green.svg)
+![Serverless](https://img.shields.io/badge/Backend-Serverless-brightgreen.svg)
 
 ## 🚀 Features
 
-- **Multi-Project Dashboard:** Create, clone, and manage multiple coding projects.
+- **Multi-Project Dashboard:** Create, manage, and switch between multiple projects seamlessly.
+- **AI Assistant:** Built-in chat interface supporting **OpenAI**, **Groq**, and **Google Gemini**. It reads your active file for context and features an **"Apply to Editor"** button to instantly write code directly into your files.
 - **Monaco Editor:** Powered by the same engine as VS Code, featuring syntax highlighting, auto-complete, and minimap.
-- **Live Preview:** Instantly run and preview your HTML/CSS/JS projects with a built-in console.
+- **Live Preview & Console:** Instantly run and preview your projects with a built-in console for debugging.
 - **GitHub Integration (REST API):**
   - Clone public and private repositories.
   - Push changes (commit directly to GitHub).
-  - Switch branches seamlessly.
+  - Switch branches seamlessly via a dropdown.
   - View Git commit graphs.
 - **Firebase Cloud Sync:**
   - Login with Google.
-  - Save and load projects securely to the cloud.
+  - Save and load entire projects securely to the cloud.
   - Automatically syncs GitHub Personal Access Tokens across devices.
-- **Built-in Terminal:** Execute simulated shell commands right in the editor.
 - **Custom Themes:** Choose between Dark, Light, Dracula, Monokai, and GitHub Dark.
+- **Built-in Terminal:** Execute simulated shell commands right in the editor.
 - **Import/Export:** Drag-and-drop file importing and ZIP project exporting.
 
 ## 🛠️ Tech Stack
 
-- **Frontend:** Vanilla HTML, CSS, JavaScript
+- **Frontend:** Vanilla HTML, CSS, JavaScript (100% Client-Side)
 - **Editor:** [Monaco Editor](https://microsoft.github.io/monaco-editor/)
 - **Auth & Database:** [Firebase](https://firebase.google.com/) (Authentication & Firestore)
 - **Git Operations:** [GitHub REST API](https://docs.github.com/en/rest)
+- **AI Providers:** OpenAI API, Groq API, Google Gemini API
 - **Utilities:** Prettier (formatting), JSZip (export), LZString (URL sharing)
 
 ## 💻 Getting Started
