@@ -24,6 +24,11 @@ const GIT_TOKEN_KEY = 'idEditor.gitToken';
 const GIT_BRANCH_KEY = 'idEditor.gitBranch';
 const MINIMAP_KEY = 'idEditor.minimap';
 
+// AI Storage Keys
+const AI_PROVIDER_KEY = 'idEditor.aiProvider';
+const AI_KEY_KEY      = 'idEditor.aiKey';
+const AI_MODEL_KEY    = 'idEditor.aiModel';
+
 let currentProjectId = null;
 let projectsData = {};
 
@@ -44,7 +49,6 @@ function loadProjectsData() {
     }
   } catch (e) { console.warn('Failed to load projects', e); }
 
-  // Fallback if no projects exist
   if (!projectsData || Object.keys(projectsData).length === 0) {
     const id = generateId();
     projectsData = {
@@ -112,7 +116,7 @@ function renderProjectsDashboard() {
     `;
 
     card.addEventListener('click', (e) => {
-      if (e.target.closest('.btn-delete-project')) return; // Handle delete separately
+      if (e.target.closest('.btn-delete-project')) return;
       if (id !== currentProjectId) {
         switchProject(id);
       } else {
@@ -123,7 +127,6 @@ function renderProjectsDashboard() {
     grid.appendChild(card);
   });
 
-  // Attach delete listeners
   document.querySelectorAll('.btn-delete-project').forEach(btn => {
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -140,27 +143,24 @@ function deleteProject(id) {
   if (currentProjectId === id) {
     currentProjectId = Object.keys(projectsData)[0];
     if (currentProjectId) switchProject(currentProjectId);
-    else location.reload(); // Should not happen since we enforce at least 1 project
+    else location.reload();
   }
   saveProjectsToStorage();
   renderProjectsDashboard();
 }
 
 function switchProject(id) {
-  saveCurrentProjectFiles(); // Save current before switching
-  
+  saveCurrentProjectFiles();
   currentProjectId = id;
   const proj = projectsData[id];
   FILES = proj.files;
   filesList = Object.keys(FILES);
   
-  // Wipe Editor
   if (editor) editor.setModel(null);
   Object.keys(models).forEach(k => { try { models[k].dispose(); } catch (e) {} delete models[k]; });
   Object.keys(savedSnapshot).forEach(k => delete savedSnapshot[k]);
   expandedFolders.clear(); foldersInitialized = false;
   
-  // Load new files
   if (filesList.length === 0) {
     FILES['index.html'] = { lang: 'html', content: DEFAULT_HTML };
     filesList.push('index.html');
@@ -207,7 +207,6 @@ function wireProjectsUI() {
     const url = prompt('Enter GitHub Repository URL (e.g., https://github.com/octocat/Hello-World.git):');
     if (!url || !url.trim()) return;
     
-    // Check if PAT exists
     const token = localStorage.getItem(GIT_TOKEN_KEY);
     if (!token) {
       alert('You need a Personal Access Token (PAT) to clone. Please set it in the Git Settings (Gear icon in sidebar) first.');
@@ -218,31 +217,19 @@ function wireProjectsUI() {
     const newProjName = prompt('Enter project name for the clone:', repoName);
     if (!newProjName) return;
 
-    // Create the project shell first
     const id = generateId();
-    projectsData[id] = {
-      name: newProjName,
-      files: {}, // Will be populated by clone
-      updatedAt: Date.now()
-    };
-    
-    switchProject(id); // Switch to empty project
+    projectsData[id] = { name: newProjName, files: {}, updatedAt: Date.now() };
+    switchProject(id);
     closeProjectsDashboard();
     
-    // Trigger clone inside terminal
     localStorage.setItem(GIT_URL_KEY, url);
     document.getElementById('gitRepoUrl').value = url;
     
-    // Open terminal
     bottomPanel.classList.remove('hidden');
     setActivePanel('terminal');
     addTermLine(`$ git clone ${url}`, '');
     
-    gitClone().then(() => {
-      addTermLine('Clone successful', 'success');
-    }).catch(err => {
-      addTermLine('Clone failed: ' + err.message, 'error');
-    });
+    gitClone().then(() => addTermLine('Clone successful', 'success')).catch(err => addTermLine('Clone failed: ' + err.message, 'error'));
   });
 }
 
@@ -268,7 +255,6 @@ async function initFirebase() {
     const { initializeApp } = await import('https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js');
     authModule = await import('https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js');
     const { getFirestore } = await import('https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js');
-    
     const { getAuth, onAuthStateChanged, getRedirectResult } = authModule;
     
     const app = initializeApp(firebaseConfig);
@@ -280,20 +266,16 @@ async function initFirebase() {
     const avatarEl = document.getElementById('userAvatar');
     const nameEl = document.getElementById('userName');
     
-    // Helper function to update the UI safely
     const updateAuthUI = (user) => {
       if (user) {
         loggedOutUI.style.display = 'none';
         loggedInUI.style.display = 'block';
-        
         const displayName = user.displayName || (user.email ? user.email.split('@')[0] : 'User');
         nameEl.textContent = displayName;
-        
-        // Use Google Profile Photo if available
         if (user.photoURL) {
           avatarEl.style.backgroundImage = `url(${user.photoURL})`;
           avatarEl.style.backgroundSize = 'cover';
-          avatarEl.textContent = ''; // Hide the letter
+          avatarEl.textContent = ''; 
         } else {
           avatarEl.textContent = displayName.charAt(0).toUpperCase();
           avatarEl.style.backgroundImage = 'none';
@@ -304,26 +286,20 @@ async function initFirebase() {
       }
     };
     
-    // 1. Check if user is already logged in (fixes redirect UI delay)
     if (fbAuth.currentUser) {
       updateAuthUI(fbAuth.currentUser);
       fbUser = fbAuth.currentUser;
       loadGitSettingsFromCloud(fbUser.uid);
     }
     
-    // 2. Handle Redirect Results (when coming back from Google)
     getRedirectResult(fbAuth).then((result) => {
       if (result && result.user) {
         updateAuthUI(result.user);
         fbUser = result.user;
         showToast('Logged in as ' + (result.user.displayName || 'User'));
       }
-    }).catch((error) => {
-      console.error('Redirect login error:', error);
-      // alert('Redirect Error: ' + error.message); // Uncomment if you want to see redirect errors
-    });
+    }).catch((error) => console.error('Redirect login error:', error));
     
-    // 3. Listen for Auth Changes
     onAuthStateChanged(fbAuth, (user) => {
       fbUser = user;
       updateAuthUI(user);
@@ -332,20 +308,15 @@ async function initFirebase() {
         loadGitSettingsFromCloud(user.uid);
       }
     });
-    
     firebaseEnabled = true;
-  } catch (e) {
-    console.warn('Firebase failed to load', e);
-    addTermLine('Firebase failed to load', 'error');
-  }
+  } catch (e) { console.warn('Firebase failed to load', e); }
 }
 
 async function saveToCloud() {
   if (!firebaseEnabled || !fbUser) return showToast('Login to save to cloud');
   try {
     showToast('Saving to cloud...');
-    saveCurrentProjectFiles(); // Ensure latest files are in memory
-    
+    saveCurrentProjectFiles();
     const { doc, setDoc } = await import('https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js');
     await setDoc(doc(fbDb, 'users', fbUser.uid, 'projects', currentProjectId), {
       name: projectsData[currentProjectId].name,
@@ -360,13 +331,11 @@ async function loadFromCloud() {
   if (!firebaseEnabled || !fbUser) return showToast('Login to load from cloud');
   try {
     showToast('Loading from cloud...');
-    const { doc, getDoc, collection, getDocs } = await import('https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js');
-    
+    const { collection, getDocs } = await import('https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js');
     const querySnapshot = await getDocs(collection(fbDb, 'users', fbUser.uid, 'projects'));
     if (querySnapshot.empty) return showToast('No cloud projects found');
     
     let newProjects = { ...projectsData };
-    
     querySnapshot.forEach((docSnap) => {
       const data = docSnap.data();
       newProjects[docSnap.id] = {
@@ -375,12 +344,10 @@ async function loadFromCloud() {
         updatedAt: new Date(data.updatedAt).getTime() || Date.now()
       };
     });
-    
     projectsData = newProjects;
     saveProjectsToStorage();
     renderProjectsDashboard();
     showToast('Cloud projects loaded! Check Dashboard.');
-    addTermLine('Cloud projects loaded', 'success');
   } catch (e) { showToast('Cloud load failed'); }
 }
 
@@ -395,7 +362,6 @@ async function loadGitSettingsFromCloud(uid) {
       document.getElementById('gitRepoUrl').value = data.url || '';
       document.getElementById('gitToken').value = data.token || '';
       updateGitStatus();
-      addTermLine('Git settings loaded from Cloud', 'success');
     }
   } catch (e) { console.warn('Failed to load Git settings'); }
 }
@@ -490,7 +456,7 @@ function initEditor() {
   });
 
   renderTabs(); renderSidebarFiles();
-  wireFindBar(); wireRun(); wireConsole(); wireClipboard(); wireSettings(); wirePreviewControls(); wireSidebar(); wireMobileActions(); wireTier1Features(); setupSaveFlush(); wireGitUI(); wireProjectsUI();
+  wireFindBar(); wireRun(); wireConsole(); wireClipboard(); wireSettings(); wirePreviewControls(); wireSidebar(); wireMobileActions(); wireTier1Features(); setupSaveFlush(); wireGitUI(); wireProjectsUI(); wireAI();
   Object.values(models).forEach(m => window.__hookAutoRun && window.__hookAutoRun(m));
 
   editor.addAction({ id: 'custom-open-find', label: 'Find', keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyF], run: openFindBar });
@@ -756,28 +722,17 @@ function wireSidebar() {
   document.getElementById('btnCloudSave').addEventListener('click', saveToCloud);
   document.getElementById('btnCloudLoad').addEventListener('click', loadFromCloud);
   
-  // UPDATED FIREBASE LOGIN BUTTON (POPUP FIRST)
   document.getElementById('btnFirebaseLogin').addEventListener('click', async () => {
     if (!firebaseEnabled || !authModule) return showToast('Firebase loading...');
     const provider = new authModule.GoogleAuthProvider();
-    
     try {
-      // 1. Try Popup first (Works best on modern mobile Chrome)
       await authModule.signInWithPopup(fbAuth, provider);
     } catch (error) {
-      // 2. If popup is blocked, fallback to Redirect
       if (error.code === 'auth/popup-blocked' || error.code === 'auth/operation-not-supported-in-this-environment' || error.code === 'auth/cancelled-popup-request') {
-        try {
-          await authModule.signInWithRedirect(fbAuth, provider);
-        } catch (redirectError) {
-          alert('Login Error: ' + redirectError.message);
-        }
-      } else {
-        alert('Login Error: ' + error.message);
-      }
+        try { await authModule.signInWithRedirect(fbAuth, provider); } catch (e) { alert('Login Error: ' + e.message); }
+      } else { alert('Login Error: ' + error.message); }
     }
   });
-  
   document.getElementById('btnFirebaseLogout').addEventListener('click', () => { if (firebaseEnabled && authModule) authModule.signOut(fbAuth); });
 }
 
@@ -951,8 +906,13 @@ function setActivePanel(panel) {
   activePanel = panel;
   document.getElementById('btnTabConsole').classList.toggle('active', panel === 'console');
   document.getElementById('btnTabTerminal').classList.toggle('active', panel === 'terminal');
-  if (panel === 'console') { consoleEl.style.display = 'block'; consoleEl.classList.add('show'); termEl.style.display = 'none'; }
-  else { consoleEl.style.display = 'none'; termEl.style.display = 'flex'; termInput.focus(); }
+  document.getElementById('btnTabAI').classList.toggle('active', panel === 'ai');
+  
+  const aiPanel = document.getElementById('aiPanel');
+  
+  if (panel === 'console') { consoleEl.style.display = 'block'; consoleEl.classList.add('show'); termEl.style.display = 'none'; aiPanel.style.display = 'none'; }
+  else if (panel === 'terminal') { consoleEl.style.display = 'none'; termEl.style.display = 'flex'; aiPanel.style.display = 'none'; termInput.focus(); }
+  else if (panel === 'ai') { consoleEl.style.display = 'none'; termEl.style.display = 'none'; aiPanel.style.display = 'flex'; document.getElementById('aiInput').focus(); }
 }
 
 function wireConsole() {
@@ -960,11 +920,13 @@ function wireConsole() {
   document.getElementById('btnClosePanel').addEventListener('click', () => { bottomPanel.classList.add('hidden'); if (editor) editor.layout(); });
   document.getElementById('btnTabConsole').addEventListener('click', () => setActivePanel('console'));
   document.getElementById('btnTabTerminal').addEventListener('click', () => setActivePanel('terminal'));
+  document.getElementById('btnTabAI').addEventListener('click', () => setActivePanel('ai'));
+  
   document.getElementById('btnCopyPanel').addEventListener('click', async () => {
     const text = activePanel === 'console' ? Array.from(consoleEl.children).map(el => el.textContent).join('\n') : termOutput.textContent;
     if (!text.trim()) return showToast('Empty'); showToast(await writeClipboardAsync(text) ? 'Copied' : 'Copy failed');
   });
-  document.getElementById('btnClearPanel').addEventListener('click', () => { if (activePanel === 'console') clearConsole(); else termOutput.innerHTML = ''; });
+  document.getElementById('btnClearPanel').addEventListener('click', () => { if (activePanel === 'console') clearConsole(); else if (activePanel === 'terminal') termOutput.innerHTML = ''; else if (activePanel === 'ai') document.getElementById('aiMessages').innerHTML = ''; });
   termInput.addEventListener('keydown', e => { if (e.key === 'Enter') { const cmd = termInput.value.trim(); termInput.value = ''; if (cmd) executeCommand(cmd); } });
   termOutput.innerHTML = `<div class="term-line term-success">Welcome to IDEDITOR Terminal.</div><div class="term-line">Type <span class="term-success">help</span> for a list of commands.</div><br>`;
 }
@@ -1136,9 +1098,7 @@ async function gitClone() {
   updateGitStatus();
 }
 
-async function gitCommit() {
-  await gitPush();
-}
+async function gitCommit() { await gitPush(); }
 
 async function gitPush() {
   const { url, token } = getRepoConfig();
@@ -1202,11 +1162,7 @@ async function updateGitStatus() {
   const { url, token } = getRepoConfig();
   const parsed = parseGitHubUrl(url);
   
-  if (!parsed) { 
-    el.textContent = 'Not connected'; 
-    branchSelect.style.display = 'none';
-    return; 
-  }
+  if (!parsed) { el.textContent = 'Not connected'; branchSelect.style.display = 'none'; return; }
   
   const headers = { 'Accept': 'application/vnd.github.v3+json' };
   if (token) headers['Authorization'] = `token ${token}`;
@@ -1215,12 +1171,10 @@ async function updateGitStatus() {
     const res = await fetch(`https://api.github.com/repos/${parsed.owner}/${parsed.repo}`, { headers });
     if (res.ok) {
       el.textContent = `Connected: ${parsed.owner}/${parsed.repo}`;
-      
       const branchRes = await fetch(`https://api.github.com/repos/${parsed.owner}/${parsed.repo}/branches`, { headers });
       if (branchRes.ok) {
         const branches = await branchRes.json();
         const currentBranch = localStorage.getItem(GIT_BRANCH_KEY) || 'main';
-        
         branchSelect.innerHTML = '';
         branches.forEach(b => {
           const opt = document.createElement('option');
@@ -1231,14 +1185,8 @@ async function updateGitStatus() {
         });
         branchSelect.style.display = 'block';
       }
-    } else {
-      el.textContent = 'Not connected (Invalid URL/Token)';
-      branchSelect.style.display = 'none';
-    }
-  } catch (e) { 
-    el.textContent = 'Not connected'; 
-    branchSelect.style.display = 'none';
-  }
+    } else { el.textContent = 'Not connected (Invalid URL/Token)'; branchSelect.style.display = 'none'; }
+  } catch (e) { el.textContent = 'Not connected'; branchSelect.style.display = 'none'; }
 }
 
 function wireGitUI() {
@@ -1252,22 +1200,16 @@ function wireGitUI() {
   document.getElementById('btnGitSaveSettings').addEventListener('click', async () => {
     const url = document.getElementById('gitRepoUrl').value.trim();
     const token = document.getElementById('gitToken').value.trim();
-    
     localStorage.setItem(GIT_URL_KEY, url);
     localStorage.setItem(GIT_TOKEN_KEY, token);
     
     if (firebaseEnabled && fbUser) {
       try {
         const { doc, setDoc } = await import('https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js');
-        await setDoc(doc(fbDb, 'users', fbUser.uid, 'settings', 'git'), {
-          url: url, token: token, updatedAt: new Date().toISOString()
-        }, { merge: true });
+        await setDoc(doc(fbDb, 'users', fbUser.uid, 'settings', 'git'), { url, token, updatedAt: new Date().toISOString() }, { merge: true });
         addTermLine('Git settings saved to Cloud', 'success');
-      } catch (e) {
-        addTermLine('Failed to save Git settings to cloud', 'error');
-      }
+      } catch (e) { addTermLine('Failed to save Git settings to cloud', 'error'); }
     }
-    
     document.getElementById('gitSettingsModal').style.display = 'none';
     showToast('Git settings saved');
     updateGitStatus();
@@ -1288,10 +1230,7 @@ function wireGitUI() {
     }
   });
   
-  document.getElementById('btnGitGraph').addEventListener('click', () => {
-    document.getElementById('gitGraphContainer').style.display = 'block';
-    renderGitGraph();
-  });
+  document.getElementById('btnGitGraph').addEventListener('click', () => { document.getElementById('gitGraphContainer').style.display = 'block'; renderGitGraph(); });
   document.getElementById('btnGitCloseGraph').addEventListener('click', () => document.getElementById('gitGraphContainer').style.display = 'none');
   
   updateGitStatus();
@@ -1320,4 +1259,159 @@ async function renderGitGraph() {
       const text = document.createElementNS('http://www.w3.org/2000/svg', 'text'); text.setAttribute('x', x + 20); text.setAttribute('y', y + 4); text.setAttribute('fill', 'currentColor'); text.setAttribute('font-size', '12'); text.setAttribute('font-family', 'ui-monospace, monospace'); text.textContent = c.sha.slice(0, 7) + '  ' + c.commit.message.split('\n')[0].slice(0, 60); svg.appendChild(text);
     });
   } catch (e) { showToast('Failed to load graph'); }
+}
+
+/* =========================================================
+   AI ASSISTANT IMPLEMENTATION (OpenAI, Groq, Gemini)
+   ========================================================= */
+
+const AI_PROVIDERS = {
+  openai: {
+    url: 'https://api.openai.com/v1/chat/completions',
+    models: ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'gpt-3.5-turbo']
+  },
+  groq: {
+    url: 'https://api.groq.com/openai/v1/chat/completions',
+    models: ['llama3-70b-8192', 'llama3-8b-8192', 'mixtral-8x7b-32768', 'gemma-7b-it']
+  },
+  gemini: {
+    url: 'https://generativelanguage.googleapis.com/v1beta/models/',
+    models: ['gemini-1.5-pro-latest', 'gemini-1.5-flash-latest', 'gemini-pro']
+  }
+};
+
+function getAIConfig() {
+  return {
+    provider: localStorage.getItem(AI_PROVIDER_KEY) || 'openai',
+    key: localStorage.getItem(AI_KEY_KEY) || '',
+    model: localStorage.getItem(AI_MODEL_KEY) || 'gpt-4o-mini'
+  };
+}
+
+function wireAI() {
+  const aiInput = document.getElementById('aiInput');
+  const btnSendAI = document.getElementById('btnSendAI');
+  const aiMessages = document.getElementById('aiMessages');
+  const modal = document.getElementById('aiSettingsModal');
+  const providerSelect = document.getElementById('aiProvider');
+  const apiKeyInput = document.getElementById('aiApiKey');
+  const modelSelect = document.getElementById('aiModel');
+
+  function updateModelOptions(provider) {
+    modelSelect.innerHTML = '';
+    AI_PROVIDERS[provider].models.forEach(m => {
+      const opt = document.createElement('option');
+      opt.value = m;
+      opt.textContent = m;
+      modelSelect.appendChild(opt);
+    });
+  }
+
+  providerSelect.addEventListener('change', (e) => updateModelOptions(e.target.value));
+
+  document.getElementById('btnAISettings').addEventListener('click', () => {
+    const conf = getAIConfig();
+    providerSelect.value = conf.provider;
+    apiKeyInput.value = conf.key;
+    updateModelOptions(conf.provider);
+    modelSelect.value = conf.model;
+    modal.style.display = 'flex';
+  });
+
+  document.getElementById('btnSaveAISettings').addEventListener('click', () => {
+    localStorage.setItem(AI_PROVIDER_KEY, providerSelect.value);
+    localStorage.setItem(AI_KEY_KEY, apiKeyInput.value.trim());
+    localStorage.setItem(AI_MODEL_KEY, modelSelect.value);
+    modal.style.display = 'none';
+    showToast('AI Settings saved');
+  });
+
+  document.getElementById('btnCloseAISettings').addEventListener('click', () => modal.style.display = 'none');
+
+  async function sendAIMessage() {
+    const text = aiInput.value.trim();
+    if (!text) return;
+    
+    aiInput.value = '';
+    aiInput.style.height = '36px';
+
+    const conf = getAIConfig();
+    if (!conf.key) {
+      addAIMessage('system', 'Please configure your API key in the settings first (Gear icon).');
+      return;
+    }
+
+    addAIMessage('user', text);
+    const loadingMsg = addAIMessage('assistant', 'Thinking...');
+
+    const currentFile = activeFile;
+    const fileContent = models[currentFile] ? models[currentFile].getValue() : '';
+    
+    const systemPrompt = `You are an expert AI coding assistant inside IDEDITOR. 
+The user is currently working on the file "${currentFile}". 
+Here is the current code:
+\`\`\`
+${fileContent}
+\`\`\`
+Provide helpful answers. Wrap code in markdown blocks.`;
+
+    try {
+      let responseText = '';
+
+      if (conf.provider === 'gemini') {
+        const url = `${AI_PROVIDERS.gemini.url}${conf.model}:generateContent?key=${conf.key}`;
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ contents: [{ parts: [{ text: systemPrompt + "\n\nUser Request: " + text }] }] })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error?.message || 'Gemini API Error');
+        responseText = data.candidates[0].content.parts[0].text;
+
+      } else {
+        const url = AI_PROVIDERS[conf.provider].url;
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${conf.key}` },
+          body: JSON.stringify({
+            model: conf.model,
+            messages: [ { role: 'system', content: systemPrompt }, { role: 'user', content: text } ]
+          })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error?.message || 'API Error');
+        responseText = data.choices[0].message.content;
+      }
+
+      loadingMsg.remove();
+      addAIMessage('assistant', responseText);
+
+    } catch (error) {
+      loadingMsg.remove();
+      addAIMessage('system', 'Error: ' + error.message);
+    }
+  }
+
+  function addAIMessage(role, text) {
+    const div = document.createElement('div');
+    div.className = 'ai-msg ai-' + role;
+    
+    let formattedText = escapeHtml(text);
+    formattedText = formattedText.replace(/```([\s\S]*?)```/g, '<div class="ai-code-block">$1</div>');
+    div.innerHTML = formattedText;
+    
+    aiMessages.appendChild(div);
+    aiMessages.scrollTop = aiMessages.scrollHeight;
+    return div;
+  }
+
+  btnSendAI.addEventListener('click', sendAIMessage);
+  aiInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendAIMessage(); }
+  });
+  aiInput.addEventListener('input', () => {
+    aiInput.style.height = 'auto';
+    aiInput.style.height = Math.min(aiInput.scrollHeight, 100) + 'px';
+  });
 }
