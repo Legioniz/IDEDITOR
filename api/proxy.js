@@ -24,10 +24,14 @@ export default async function handler(req, res) {
   // 2. Extract the target URL
   // Vercel passes the URL via the query parameter because of our vercel.json rewrite
   const rawTargetUrl = Array.isArray(req.query.url) ? req.query.url[0] : req.query.url;
+  if (typeof rawTargetUrl !== 'string' || !rawTargetUrl.trim()) {
+    return res.status(400).json({ error: 'Missing URL parameter. Expected an absolute http(s) URL.' });
+  }
+
   let targetUrl;
 
   try {
-    targetUrl = new URL(rawTargetUrl);
+    targetUrl = new URL(rawTargetUrl.trim());
   } catch (error) {
     return res.status(400).json({ error: 'Invalid URL parameter. Expected an absolute http(s) URL.' });
   }
@@ -51,21 +55,17 @@ export default async function handler(req, res) {
   
   try {
     // 3. Prepare headers (remove ones that break the fetch)
-    const headers = { ...req.headers };
-    delete headers['host'];
-    delete headers['connection'];
-    delete headers['content-length'];
-    delete headers['accept-encoding']; // Let fetch handle decompression
-    
-    // Set the required headers for GitHub
-    headers['host'] = targetUrl.host;
-    headers['User-Agent'] = headers['user-agent'] || 'git/2.39.2';
+    const headers = {};
+    for (const name of ['accept', 'authorization', 'content-type', 'git-protocol', 'user-agent']) {
+      if (req.headers[name]) headers[name] = req.headers[name];
+    }
+    headers['user-agent'] = headers['user-agent'] || 'git/2.39.2';
     
     // 4. Buffer the body (fixes streaming 400 errors)
     const bodyBuffer = ['GET', 'HEAD'].includes(req.method) ? null : await buffer(req);
     
     // 5. Fetch from GitHub
-    const response = await fetch(targetUrl, {
+    const response = await fetch(targetUrl.toString(), {
       method: req.method,
       headers: headers,
       body: bodyBuffer,
@@ -84,6 +84,6 @@ export default async function handler(req, res) {
     res.send(Buffer.from(resBuffer));
   } catch (error) {
     console.error('Proxy Error:', error);
-    res.status(500).json({ error: error.message });
+    res.status(502).json({ error: `Unable to reach Git remote: ${error.message}` });
   }
 }

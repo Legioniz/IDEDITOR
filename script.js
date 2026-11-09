@@ -1193,7 +1193,7 @@ async function handleGitCommand(args) {
     try {
       await gitClone();
     } catch (err) {
-      addTermLine('Clone failed: ' + err.message, 'error');
+      addTermLine('Clone failed: ' + (err && err.message ? err.message : String(err)), 'error');
     } finally {
       if (loader.parentNode) loader.parentNode.removeChild(loader);
     }
@@ -1446,7 +1446,8 @@ async function gitClone() {
     updateGitStatus();
   } catch (e) { 
     console.error(e); 
-    showToast('Clone failed'); 
+    const message = e && e.message ? e.message : String(e);
+    showToast('Clone failed: ' + message);
     throw e; 
   }
 }
