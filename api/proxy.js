@@ -21,12 +21,13 @@ export default async function handler(req, res) {
   res.setHeader('Access-Control-Expose-Headers', '*');
   if (req.method === 'OPTIONS') return res.status(200).end();
   
-  // 2. Extract the target URL
-  // Vercel passes the rewritten path as the url query parameter.
-  const rawTargetUrl = Array.isArray(req.query.url) ? req.query.url.join('?') : req.query.url;
+  // 2. Extract the target URL. Git's URL contains its own query string, so
+  // Vercel may expose that query separately from `url`.
+  let rawTargetUrl = Array.isArray(req.query.url) ? req.query.url.join('?') : req.query.url;
   if (typeof rawTargetUrl !== 'string' || !rawTargetUrl.trim()) {
     return res.status(400).json({ error: 'Missing URL parameter. Expected an absolute http(s) URL.' });
   }
+  rawTargetUrl = rawTargetUrl.trim().replace(/^https:\/(?!\/)/, 'https://').replace(/^http:\/(?!\/)/, 'http://');
 
   let targetUrl;
 
@@ -51,6 +52,9 @@ export default async function handler(req, res) {
         targetUrl.searchParams.append(key, value);
       }
     });
+    if (targetUrl.pathname.endsWith('/info/refs') && !targetUrl.searchParams.has('service')) {
+      targetUrl.searchParams.set('service', 'git-upload-pack');
+    }
   });
   
   try {
