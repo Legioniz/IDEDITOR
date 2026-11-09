@@ -320,7 +320,7 @@ async function initFirebase() {
       }
     }).catch((error) => {
       console.error('Redirect login error:', error);
-      showToast('Login error: ' + error.message);
+      // alert('Redirect Error: ' + error.message); // Uncomment if you want to see redirect errors
     });
     
     // 3. Listen for Auth Changes
@@ -755,11 +755,29 @@ function wireSidebar() {
   
   document.getElementById('btnCloudSave').addEventListener('click', saveToCloud);
   document.getElementById('btnCloudLoad').addEventListener('click', loadFromCloud);
-  document.getElementById('btnFirebaseLogin').addEventListener('click', () => {
+  
+  // UPDATED FIREBASE LOGIN BUTTON (POPUP FIRST)
+  document.getElementById('btnFirebaseLogin').addEventListener('click', async () => {
     if (!firebaseEnabled || !authModule) return showToast('Firebase loading...');
     const provider = new authModule.GoogleAuthProvider();
-    if (isMobile()) authModule.signInWithRedirect(fbAuth, provider); else authModule.signInWithPopup(fbAuth, provider);
+    
+    try {
+      // 1. Try Popup first (Works best on modern mobile Chrome)
+      await authModule.signInWithPopup(fbAuth, provider);
+    } catch (error) {
+      // 2. If popup is blocked, fallback to Redirect
+      if (error.code === 'auth/popup-blocked' || error.code === 'auth/operation-not-supported-in-this-environment' || error.code === 'auth/cancelled-popup-request') {
+        try {
+          await authModule.signInWithRedirect(fbAuth, provider);
+        } catch (redirectError) {
+          alert('Login Error: ' + redirectError.message);
+        }
+      } else {
+        alert('Login Error: ' + error.message);
+      }
+    }
   });
+  
   document.getElementById('btnFirebaseLogout').addEventListener('click', () => { if (firebaseEnabled && authModule) authModule.signOut(fbAuth); });
 }
 
@@ -1074,7 +1092,6 @@ async function gitClone() {
   const headers = { 'Accept': 'application/vnd.github.v3+json' };
   if (token) headers['Authorization'] = `token ${token}`;
 
-  // 1. Get default branch and verify repo
   const repoRes = await fetch(`https://api.github.com/repos/${parsed.owner}/${parsed.repo}`, { headers });
   if (!repoRes.ok) throw new Error(`GitHub API: ${repoRes.status} ${repoRes.statusText}`);
   const repoData = await repoRes.json();
@@ -1083,13 +1100,11 @@ async function gitClone() {
   const branch = selectedBranch || repoData.default_branch || 'main';
   localStorage.setItem(GIT_BRANCH_KEY, branch);
 
-  // 2. Get file tree
   const treeRes = await fetch(`https://api.github.com/repos/${parsed.owner}/${parsed.repo}/git/trees/${branch}?recursive=1`, { headers });
   if (!treeRes.ok) throw new Error(`GitHub API: ${treeRes.status} ${treeRes.statusText}`);
   const treeData = await treeRes.json();
   const blobs = treeData.tree.filter(item => item.type === 'blob');
 
-  // 3. Fetch file contents
   const newFiles = {};
   await Promise.all(blobs.map(async (blob) => {
     if (blob.size > 5000000) return; // Skip >5MB
@@ -1101,7 +1116,6 @@ async function gitClone() {
     }
   }));
 
-  // 4. Update Editor
   if (editor) editor.setModel(null);
   filesList.length = 0;
   Object.keys(FILES).forEach(k => delete FILES[k]);
@@ -1135,18 +1149,15 @@ async function gitPush() {
   const headers = { 'Accept': 'application/vnd.github.v3+json', 'Authorization': `token ${token}`, 'Content-Type': 'application/json' };
 
   try {
-    // 1. Get latest commit
     let refRes = await fetch(`https://api.github.com/repos/${parsed.owner}/${parsed.repo}/git/ref/heads/${branch}`, { headers });
     if (!refRes.ok) throw new Error('Failed to fetch latest commit ref');
     const refData = await refRes.json();
     const latestCommitSha = refData.object.sha;
 
-    // 2. Get base tree
     const commitRes = await fetch(`https://api.github.com/repos/${parsed.owner}/${parsed.repo}/git/commits/${latestCommitSha}`, { headers });
     const commitData = await commitRes.json();
     const baseTreeSha = commitData.tree.sha;
 
-    // 3. Create new tree (blobs)
     const treeItems = [];
     for (const [path, model] of Object.entries(models)) {
       const content = model.getValue();
@@ -1163,14 +1174,12 @@ async function gitPush() {
     });
     const newTreeData = await newTreeRes.json();
 
-    // 4. Create new commit
     const msg = (document.getElementById('gitMessage').value || 'Update from IDEDITOR').trim();
     const newCommitRes = await fetch(`https://api.github.com/repos/${parsed.owner}/${parsed.repo}/git/commits`, {
       method: 'POST', headers, body: JSON.stringify({ message: msg, tree: newTreeData.sha, parents: [latestCommitSha] })
     });
     const newCommitData = await newCommitRes.json();
 
-    // 5. Update branch reference
     const updateRefRes = await fetch(`https://api.github.com/repos/${parsed.owner}/${parsed.repo}/git/refs/heads/${branch}`, {
       method: 'PATCH', headers, body: JSON.stringify({ sha: newCommitData.sha, force: true })
     });
