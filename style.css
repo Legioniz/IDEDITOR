@@ -789,3 +789,26 @@ html[data-theme="light"] select.git-input option {
   background-color: #ffffff !important;
   color: #000000 !important;
 }
+/* Bulletproof fix for mobile select dropdowns */
+#themeSelect, #gitBranchSelect {
+  color: var(--fg) !important;
+  background-color: var(--panel) !important;
+  -webkit-text-fill-color: var(--fg) !important;
+  opacity: 1 !important;
+}
+
+#themeSelect option, #gitBranchSelect option {
+  color: var(--fg) !important;
+  background-color: var(--panel) !important;
+  -webkit-text-fill-color: var(--fg) !important;
+}
+
+/* Ensure light theme works correctly for the selects */
+html[data-theme="light"] #themeSelect, 
+html[data-theme="light"] #gitBranchSelect,
+html[data-theme="light"] #themeSelect option,
+html[data-theme="light"] #gitBranchSelect option {
+  color: #1e1e1e !important;
+  background-color: #ffffff !important;
+  -webkit-text-fill-color: #1e1e1e !important;
+}
