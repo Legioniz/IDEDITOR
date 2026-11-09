@@ -23,20 +23,31 @@ export default async function handler(req, res) {
   
   // 2. Extract the target URL
   // Vercel passes the URL via the query parameter because of our vercel.json rewrite
-  let targetUrl = req.query.url;
-  
-  if (!targetUrl || !targetUrl.startsWith('http')) {
-    return res.status(400).json({ error: 'Invalid URL parameter in path. Received: ' + req.url });
+  const rawTargetUrl = Array.isArray(req.query.url) ? req.query.url[0] : req.query.url;
+  let targetUrl;
+
+  try {
+    targetUrl = new URL(rawTargetUrl);
+  } catch (error) {
+    return res.status(400).json({ error: 'Invalid URL parameter. Expected an absolute http(s) URL.' });
+  }
+
+  if (!['http:', 'https:'].includes(targetUrl.protocol)) {
+    return res.status(400).json({ error: 'Invalid URL parameter. Expected an absolute http(s) URL.' });
   }
   
   // Reconstruct the query string (e.g., ?service=git-upload-pack)
-  // Vercel splits the URL and query params, so we put them back together
+  // Vercel may split the target URL's query parameters from the `url` value.
+  // Append them to the parsed URL rather than creating a second `?`.
   const otherParams = Object.keys(req.query).filter(k => k !== 'url');
-  if (otherParams.length > 0) {
-    const qs = new URLSearchParams();
-    otherParams.forEach(k => qs.append(k, req.query[k]));
-    targetUrl += '?' + qs.toString();
-  }
+  otherParams.forEach((key) => {
+    const values = Array.isArray(req.query[key]) ? req.query[key] : [req.query[key]];
+    values.forEach((value) => {
+      if (value !== undefined && value !== null && !targetUrl.searchParams.has(key)) {
+        targetUrl.searchParams.append(key, value);
+      }
+    });
+  });
   
   try {
     // 3. Prepare headers (remove ones that break the fetch)
@@ -47,7 +58,7 @@ export default async function handler(req, res) {
     delete headers['accept-encoding']; // Let fetch handle decompression
     
     // Set the required headers for GitHub
-    headers['host'] = new URL(targetUrl).host;
+    headers['host'] = targetUrl.host;
     headers['User-Agent'] = headers['user-agent'] || 'git/2.39.2';
     
     // 4. Buffer the body (fixes streaming 400 errors)
