@@ -1,48 +1,250 @@
 /* =========================================================
    DEFAULT FILES
    ========================================================= */
-const DEFAULT_HTML = `<h1>Hello 👋</h1>
-<button id="btn">Click me</button>
-<p id="out"></p>`;
+const DEFAULT_HTML = `<h1>Hello 👋</h1>\n<button id="btn">Click me</button>\n<p id="out"></p>`;
+const DEFAULT_CSS = `body { font-family: system-ui, sans-serif; padding: 16px; color: #222; }\nh1 { color: #0a84ff; }\nbutton { padding: 10px 16px; font-size: 16px; border: 0; border-radius: 8px; background: #0a84ff; color: #fff; }\n#out { font-size: 18px; font-weight: 600; }`;
+const DEFAULT_JS = `let n = 0;\ndocument.getElementById('btn').addEventListener('click', () => {\n  n++;\n  document.getElementById('out').textContent = 'Clicked ' + n + ' time' + (n === 1 ? '' : 's');\n  console.log('click', n);\n});`;
 
-const DEFAULT_CSS = `body {
-  font-family: system-ui, sans-serif;
-  padding: 16px;
-  color: #222;
-}
-h1 { color: #0a84ff; }
-button {
-  padding: 10px 16px;
-  font-size: 16px;
-  border: 0;
-  border-radius: 8px;
-  background: #0a84ff;
-  color: #fff;
-}
-#out { font-size: 18px; font-weight: 600; }`;
-
-const DEFAULT_JS = `let n = 0;
-document.getElementById('btn').addEventListener('click', () => {
-  n++;
-  document.getElementById('out').textContent =
-    'Clicked ' + n + ' time' + (n === 1 ? '' : 's');
-  console.log('click', n);
-});`;
-
-let FILES = {
+const DEFAULT_FILES = {
   'index.html': { lang: 'html',       content: DEFAULT_HTML },
   'style.css':  { lang: 'css',        content: DEFAULT_CSS  },
   'script.js':  { lang: 'javascript', content: DEFAULT_JS   }
 };
-let filesList = ['index.html', 'style.css', 'script.js'];
 
-const STORAGE_KEY  = 'idEditor.files';
+let FILES = {};
+let filesList = [];
+
+// Storage Keys
+const PROJECTS_KEY = 'idEditor.projectsData';
 const THEME_KEY    = 'idEditor.theme';
 const FONTSIZE_KEY = 'idEditor.fontSize';
 const SIDEBAR_KEY  = 'idEditor.sidebarHidden';
 const GIT_URL_KEY  = 'idEditor.gitRepo';
 const GIT_TOKEN_KEY = 'idEditor.gitToken';
+const GIT_BRANCH_KEY = 'idEditor.gitBranch';
 const MINIMAP_KEY = 'idEditor.minimap';
+
+let currentProjectId = null;
+let projectsData = {};
+
+/* =========================================================
+   PROJECT MANAGEMENT LOGIC
+   ========================================================= */
+function generateId() { return 'p_' + Date.now().toString(36) + Math.random().toString(36).substr(2, 5); }
+
+function loadProjectsData() {
+  try {
+    const raw = localStorage.getItem(PROJECTS_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && parsed.projects) {
+        projectsData = parsed.projects;
+        currentProjectId = parsed.currentProjectId;
+      }
+    }
+  } catch (e) { console.warn('Failed to load projects', e); }
+
+  // Fallback if no projects exist
+  if (!projectsData || Object.keys(projectsData).length === 0) {
+    const id = generateId();
+    projectsData = {
+      [id]: {
+        name: 'My First Project',
+        files: JSON.parse(JSON.stringify(DEFAULT_FILES)),
+        updatedAt: Date.now()
+      }
+    };
+    currentProjectId = id;
+    saveProjectsToStorage();
+  } else if (!currentProjectId || !projectsData[currentProjectId]) {
+    currentProjectId = Object.keys(projectsData)[0];
+  }
+
+  FILES = projectsData[currentProjectId].files;
+  filesList = Object.keys(FILES);
+}
+
+function saveProjectsToStorage() {
+  try {
+    localStorage.setItem(PROJECTS_KEY, JSON.stringify({
+      currentProjectId: currentProjectId,
+      projects: projectsData
+    }));
+  } catch (e) { console.warn('Failed to save projects', e); }
+}
+
+function saveCurrentProjectFiles() {
+  if (!currentProjectId || !projectsData[currentProjectId]) return;
+  const data = {};
+  Object.keys(models).forEach(k => { data[k] = models[k].getValue(); savedSnapshot[k] = data[k]; });
+  projectsData[currentProjectId].files = data;
+  projectsData[currentProjectId].updatedAt = Date.now();
+  saveProjectsToStorage();
+  hasPendingSave = false; Object.keys(models).forEach(markDirtyState);
+}
+
+function renderProjectsDashboard() {
+  const grid = document.getElementById('projectsGrid');
+  grid.innerHTML = '';
+  
+  const sortedProjects = Object.entries(projectsData).sort((a, b) => b[1].updatedAt - a[1].updatedAt);
+
+  sortedProjects.forEach(([id, proj]) => {
+    const isActive = id === currentProjectId;
+    const fileCount = Object.keys(proj.files).length;
+    const dateStr = new Date(proj.updatedAt).toLocaleDateString() + ' ' + new Date(proj.updatedAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+    
+    const card = document.createElement('div');
+    card.className = 'project-card';
+    card.style.borderColor = isActive ? 'var(--accent)' : 'var(--border)';
+    
+    card.innerHTML = `
+      <div class="project-card-header">
+        <h3>${escapeHtml(proj.name)} ${isActive ? '<span style="color:var(--accent);font-size:12px;">(Active)</span>' : ''}</h3>
+        ${!isActive ? `<button class="btn-delete-project" data-id="${id}" title="Delete Project">
+          <svg viewBox="0 0 24 24" width="16" height="16"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>` : ''}
+      </div>
+      <div class="project-date">Last updated: ${dateStr}</div>
+      <div class="project-stats">
+        <span>📄 ${fileCount} files</span>
+      </div>
+    `;
+
+    card.addEventListener('click', (e) => {
+      if (e.target.closest('.btn-delete-project')) return; // Handle delete separately
+      if (id !== currentProjectId) {
+        switchProject(id);
+      } else {
+        closeProjectsDashboard();
+      }
+    });
+
+    grid.appendChild(card);
+  });
+
+  // Attach delete listeners
+  document.querySelectorAll('.btn-delete-project').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const id = btn.dataset.id;
+      if (confirm(`Delete project "${projectsData[id].name}"? This cannot be undone.`)) {
+        deleteProject(id);
+      }
+    });
+  });
+}
+
+function deleteProject(id) {
+  delete projectsData[id];
+  if (currentProjectId === id) {
+    currentProjectId = Object.keys(projectsData)[0];
+    if (currentProjectId) switchProject(currentProjectId);
+    else location.reload(); // Should not happen since we enforce at least 1 project
+  }
+  saveProjectsToStorage();
+  renderProjectsDashboard();
+}
+
+function switchProject(id) {
+  saveCurrentProjectFiles(); // Save current before switching
+  
+  currentProjectId = id;
+  const proj = projectsData[id];
+  FILES = proj.files;
+  filesList = Object.keys(FILES);
+  
+  // Wipe Editor
+  if (editor) editor.setModel(null);
+  Object.keys(models).forEach(k => { try { models[k].dispose(); } catch (e) {} delete models[k]; });
+  Object.keys(savedSnapshot).forEach(k => delete savedSnapshot[k]);
+  expandedFolders.clear(); foldersInitialized = false;
+  
+  // Load new files
+  if (filesList.length === 0) {
+    FILES['index.html'] = { lang: 'html', content: DEFAULT_HTML };
+    filesList.push('index.html');
+  }
+  filesList.forEach(ensureModel);
+  
+  activeFile = filesList[0];
+  renderTabs(); renderSidebarFiles(); switchFile(activeFile);
+  saveProjectsToStorage();
+  
+  closeProjectsDashboard();
+  showToast(`Switched to ${proj.name}`);
+}
+
+function createNewProject(name = 'Untitled Project') {
+  const id = generateId();
+  projectsData[id] = {
+    name: name,
+    files: JSON.parse(JSON.stringify(DEFAULT_FILES)),
+    updatedAt: Date.now()
+  };
+  switchProject(id);
+}
+
+function openProjectsDashboard() {
+  renderProjectsDashboard();
+  document.getElementById('projectsView').classList.add('show');
+}
+
+function closeProjectsDashboard() {
+  document.getElementById('projectsView').classList.remove('show');
+}
+
+function wireProjectsUI() {
+  document.getElementById('btnProjectsHome').addEventListener('click', openProjectsDashboard);
+  document.getElementById('btnCloseProjects').addEventListener('click', closeProjectsDashboard);
+  
+  document.getElementById('btnDashboardNewProject').addEventListener('click', () => {
+    const name = prompt('Enter project name:', 'New Project');
+    if (name && name.trim()) createNewProject(name.trim());
+  });
+
+  document.getElementById('btnDashboardCloneProject').addEventListener('click', () => {
+    const url = prompt('Enter GitHub Repository URL (e.g., https://github.com/octocat/Hello-World.git):');
+    if (!url || !url.trim()) return;
+    
+    // Check if PAT exists
+    const token = localStorage.getItem(GIT_TOKEN_KEY);
+    if (!token) {
+      alert('You need a Personal Access Token (PAT) to clone. Please set it in the Git Settings (Gear icon in sidebar) first.');
+      return;
+    }
+
+    const repoName = url.split('/').pop().replace('.git', '');
+    const newProjName = prompt('Enter project name for the clone:', repoName);
+    if (!newProjName) return;
+
+    // Create the project shell first
+    const id = generateId();
+    projectsData[id] = {
+      name: newProjName,
+      files: {}, // Will be populated by clone
+      updatedAt: Date.now()
+    };
+    
+    switchProject(id); // Switch to empty project
+    closeProjectsDashboard();
+    
+    // Trigger clone inside terminal
+    localStorage.setItem(GIT_URL_KEY, url);
+    document.getElementById('gitRepoUrl').value = url;
+    
+    // Open terminal
+    bottomPanel.classList.remove('hidden');
+    setActivePanel('terminal');
+    addTermLine(`$ git clone ${url}`, '');
+    
+    gitClone().then(() => {
+      addTermLine('Clone successful', 'success');
+    }).catch(err => {
+      addTermLine('Clone failed: ' + err.message, 'error');
+    });
+  });
+}
 
 /* =========================================================
    FIREBASE SETUP
@@ -91,10 +293,7 @@ async function initFirebase() {
         nameEl.textContent = displayName;
         avatarEl.textContent = displayName.charAt(0);
         addTermLine('Firebase Connected: ' + displayName, 'success');
-        
-        // Load Git Settings from Cloud upon login
         loadGitSettingsFromCloud(user.uid);
-        
       } else {
         loggedInUI.style.display = 'none';
         loggedOutUI.style.display = 'block';
@@ -110,11 +309,15 @@ async function saveToCloud() {
   if (!firebaseEnabled || !fbUser) return showToast('Login to save to cloud');
   try {
     showToast('Saving to cloud...');
+    saveCurrentProjectFiles(); // Ensure latest files are in memory
+    
     const { doc, setDoc } = await import('https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js');
-    const data = {};
-    Object.keys(models).forEach(k => { data[k] = models[k].getValue(); });
-    await setDoc(doc(fbDb, 'users', fbUser.uid, 'projects', 'main'), { files: data, updatedAt: new Date().toISOString() });
-    showToast('Saved to cloud!'); addTermLine('Saved to cloud!', 'success');
+    await setDoc(doc(fbDb, 'users', fbUser.uid, 'projects', currentProjectId), {
+      name: projectsData[currentProjectId].name,
+      files: projectsData[currentProjectId].files,
+      updatedAt: new Date().toISOString()
+    });
+    showToast('Saved to cloud!'); addTermLine('Project saved to cloud!', 'success');
   } catch (e) { showToast('Cloud save failed'); }
 }
 
@@ -122,25 +325,27 @@ async function loadFromCloud() {
   if (!firebaseEnabled || !fbUser) return showToast('Login to load from cloud');
   try {
     showToast('Loading from cloud...');
-    const { doc, getDoc } = await import('https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js');
-    const docSnap = await getDoc(doc(fbDb, 'users', fbUser.uid, 'projects', 'main'));
-    if (!docSnap.exists()) return showToast('No cloud project found');
+    const { doc, getDoc, collection, getDocs } = await import('https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js');
     
-    const cloudFiles = docSnap.data().files;
-    if (editor) editor.setModel(null);
-    filesList.length = 0;
-    Object.keys(FILES).forEach(k => delete FILES[k]);
-    Object.keys(models).forEach(k => { if(models[k]) models[k].dispose(); delete models[k]; });
-    Object.keys(savedSnapshot).forEach(k => delete savedSnapshot[k]);
+    const querySnapshot = await getDocs(collection(fbDb, 'users', fbUser.uid, 'projects'));
+    if (querySnapshot.empty) return showToast('No cloud projects found');
     
-    Object.keys(cloudFiles).forEach(name => {
-      FILES[name] = { lang: langFromFilename(name), content: cloudFiles[name] };
-      filesList.push(name); ensureModel(name);
+    let newProjects = { ...projectsData };
+    
+    querySnapshot.forEach((docSnap) => {
+      const data = docSnap.data();
+      newProjects[docSnap.id] = {
+        name: data.name || 'Cloud Project',
+        files: data.files || {},
+        updatedAt: new Date(data.updatedAt).getTime() || Date.now()
+      };
     });
-    if (!filesList.length) filesList = ['index.html'];
-    activeFile = filesList[0];
-    renderTabs(); renderSidebarFiles(); switchFile(activeFile); saveNow();
-    showToast('Loaded from cloud!');
+    
+    projectsData = newProjects;
+    saveProjectsToStorage();
+    renderProjectsDashboard();
+    showToast('Cloud projects loaded! Check Dashboard.');
+    addTermLine('Cloud projects loaded', 'success');
   } catch (e) { showToast('Cloud load failed'); }
 }
 
@@ -148,26 +353,16 @@ async function loadGitSettingsFromCloud(uid) {
   try {
     const { doc, getDoc } = await import('https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js');
     const docSnap = await getDoc(doc(fbDb, 'users', uid, 'settings', 'git'));
-    
     if (docSnap.exists()) {
       const data = docSnap.data();
-      
-      // Update local storage so the Git commands work immediately
       if (data.url) localStorage.setItem(GIT_URL_KEY, data.url);
       if (data.token) localStorage.setItem(GIT_TOKEN_KEY, data.token);
-      
-      // Update the UI inputs if they exist
-      const urlInput = document.getElementById('gitRepoUrl');
-      const tokenInput = document.getElementById('gitToken');
-      if (urlInput) urlInput.value = data.url || '';
-      if (tokenInput) tokenInput.value = data.token || '';
-      
+      document.getElementById('gitRepoUrl').value = data.url || '';
+      document.getElementById('gitToken').value = data.token || '';
       updateGitStatus();
       addTermLine('Git settings loaded from Cloud', 'success');
     }
-  } catch (e) {
-    console.warn('Failed to load Git settings from cloud:', e);
-  }
+  } catch (e) { console.warn('Failed to load Git settings'); }
 }
 
 /* =========================================================
@@ -186,36 +381,31 @@ function parserForFile(name) {
   return { html: 'html', htm: 'html', css: 'css', js: 'babel', mjs: 'babel', jsx: 'babel', ts: 'typescript', tsx: 'typescript', json: 'json', md: 'markdown' }[ext] || null;
 }
 
-let loadedFromUrl = false;
-function tryLoadFromHash() {
-  if (typeof LZString === 'undefined' || !location.hash.startsWith('#s=')) return false;
-  try {
-    const raw = LZString.decompressFromEncodedURIComponent(location.hash.slice(3));
-    if (!raw) return false;
-    const parsed = JSON.parse(raw);
-    const names = Object.keys(parsed).filter(k => typeof parsed[k] === 'string');
-    if (names.length === 0) return false;
-    FILES = {}; filesList = names.slice();
-    names.forEach(name => { FILES[name] = { lang: langFromFilename(name), content: parsed[name] }; });
-    history.replaceState(null, '', location.pathname + location.search);
-    return true;
-  } catch (e) { return false; }
+loadProjectsData();
+document.documentElement.setAttribute('data-theme', (localStorage.getItem(THEME_KEY) === 'vs' || localStorage.getItem(THEME_KEY) === 'light') ? 'light' : 'dark');
+
+/* =========================================================
+   THEME SETUP
+   ========================================================= */
+function defineCustomThemes() {
+  monaco.editor.defineTheme('dracula', {
+    base: 'vs-dark', inherit: true,
+    rules: [ { token: 'comment', foreground: '6272a4' }, { token: 'string', foreground: 'f1fa8c' }, { token: 'keyword', foreground: 'ff79c6' }, { token: 'number', foreground: 'bd93f9' }, { token: 'type', foreground: '8be9fd' } ],
+    colors: { 'editor.background': '#282a36', 'editor.foreground': '#f8f8f2' }
+  });
+  monaco.editor.defineTheme('monokai', {
+    base: 'vs-dark', inherit: true,
+    rules: [ { token: 'comment', foreground: '75715e' }, { token: 'string', foreground: 'e6db74' }, { token: 'keyword', foreground: 'f92672' }, { token: 'number', foreground: 'ae81ff' } ],
+    colors: { 'editor.background': '#272822', 'editor.foreground': '#f8f8f2' }
+  });
+  monaco.editor.defineTheme('github-dark', {
+    base: 'vs-dark', inherit: true,
+    rules: [ { token: 'comment', foreground: '8b949e' }, { token: 'string', foreground: 'a5d6ff' }, { token: 'keyword', foreground: 'ff7b72' } ],
+    colors: { 'editor.background': '#0d1117', 'editor.foreground': '#c9d1d9' }
+  });
 }
-function tryLoadFromStorage() {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return false;
-    const parsed = JSON.parse(raw);
-    const names = Object.keys(parsed).filter(k => typeof parsed[k] === 'string');
-    if (names.length === 0) return false;
-    FILES = {}; filesList = names.slice();
-    names.forEach(name => { FILES[name] = { lang: langFromFilename(name), content: parsed[name] }; });
-    return true;
-  } catch (e) { return false; }
-}
-loadedFromUrl = tryLoadFromHash();
-if (!loadedFromUrl) tryLoadFromStorage();
-document.documentElement.setAttribute('data-theme', localStorage.getItem(THEME_KEY) || 'dark');
+
+const currentTheme = localStorage.getItem(THEME_KEY) || 'vs-dark';
 
 /* =========================================================
    EDITOR SETUP
@@ -246,12 +436,14 @@ function ensureModel(name) {
 }
 
 function initEditor() {
-  if (!filesList.length) filesList = ['index.html', 'style.css', 'script.js'];
+  defineCustomThemes();
+  
+  if (!filesList.length) filesList = ['index.html'];
   if (!filesList.includes(activeFile)) activeFile = filesList[0];
   filesList.forEach(ensureModel);
 
   editor = monaco.editor.create(document.getElementById('editor'), {
-    model: models[activeFile], theme: 'vs-dark', fontSize: fontSize,
+    model: models[activeFile], theme: currentTheme, fontSize: fontSize,
     minimap: { enabled: minimapEnabled }, lineNumbersMinChars: 2, automaticLayout: true,
     wordWrap: 'on', scrollBeyondLastLine: false, padding: { top: 8 }, tabSize: 2,
     bracketPairColorization: { enabled: true }, guides: { bracketPairs: true },
@@ -263,21 +455,19 @@ function initEditor() {
   });
 
   renderTabs(); renderSidebarFiles();
-  wireFindBar(); wireRun(); wireConsole(); wireClipboard(); wireSettings(); wirePreviewControls(); wireSidebar(); wireMobileActions(); wireTier1Features(); setupSaveFlush(); wireGitUI();
+  wireFindBar(); wireRun(); wireConsole(); wireClipboard(); wireSettings(); wirePreviewControls(); wireSidebar(); wireMobileActions(); wireTier1Features(); setupSaveFlush(); wireGitUI(); wireProjectsUI();
   Object.values(models).forEach(m => window.__hookAutoRun && window.__hookAutoRun(m));
 
   editor.addAction({ id: 'custom-open-find', label: 'Find', keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyF], run: openFindBar });
   editor.addAction({ id: 'custom-run-kb', label: 'Run', keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter], run: run });
 
-  if (loadedFromUrl) saveNow();
-  setTheme(localStorage.getItem(THEME_KEY) || 'dark');
   updateStatusFont(); switchFile(activeFile);
   initFirebase();
-  showToast('Loaded');
+  showToast('Loaded ' + projectsData[currentProjectId].name);
 }
 
 document.addEventListener('keydown', e => {
-  if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); saveNow(); showToast('Saved'); }
+  if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); saveCurrentProjectFiles(); showToast('Project Saved'); }
 });
 
 function wireTier1Features() {
@@ -303,7 +493,7 @@ function wireTier1Features() {
       ensureModel(file.name); if (!firstImported) firstImported = file.name;
     }
     renderTabs(); renderSidebarFiles(); if (firstImported) switchFile(firstImported);
-    saveNow(); showToast('Imported files'); e.target.value = '';
+    saveCurrentProjectFiles(); showToast('Imported files'); e.target.value = '';
   });
 
   const resizer = document.getElementById('resizer'), editorPane = document.getElementById('editorPane'), outputPane = document.getElementById('outputPane');
@@ -351,18 +541,10 @@ function markDirtyState(file) {
 }
 
 let saveTimer = null, hasPendingSave = false;
-function saveNow() {
-  try {
-    const data = {};
-    Object.keys(models).forEach(k => { data[k] = models[k].getValue(); savedSnapshot[k] = data[k]; });
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-  } catch (e) {}
-  hasPendingSave = false; Object.keys(models).forEach(markDirtyState);
-}
-function scheduleSave() { hasPendingSave = true; clearTimeout(saveTimer); saveTimer = setTimeout(saveNow, 500); }
+function scheduleSave() { hasPendingSave = true; clearTimeout(saveTimer); saveTimer = setTimeout(saveCurrentProjectFiles, 500); }
 function setupSaveFlush() {
-  document.addEventListener('visibilitychange', () => { if (document.hidden && hasPendingSave) saveNow(); });
-  window.addEventListener('beforeunload', () => { if (hasPendingSave) saveNow(); });
+  document.addEventListener('visibilitychange', () => { if (document.hidden && hasPendingSave) saveCurrentProjectFiles(); });
+  window.addEventListener('beforeunload', () => { if (hasPendingSave) saveCurrentProjectFiles(); });
 }
 
 function renderTabs() {
@@ -481,7 +663,7 @@ function promptNewFile() {
   if (!/\.[a-z0-9]+$/i.test(name)) name += '.txt';
   if (FILES[name]) return showToast('File already exists');
   FILES[name] = { lang: langFromFilename(name), content: '' }; filesList.push(name); ensureModel(name);
-  renderTabs(); renderSidebarFiles(); switchFile(name); saveNow(); showToast('Created ' + name);
+  renderTabs(); renderSidebarFiles(); switchFile(name); saveCurrentProjectFiles(); showToast('Created ' + name);
 }
 function promptNewFolder() {
   const raw = prompt('New folder path (e.g. src/components):'); if (!raw) return;
@@ -492,7 +674,7 @@ function promptNewFolder() {
   FILES[placeholder] = { lang: 'plaintext', content: '' }; filesList.push(placeholder); ensureModel(placeholder);
   const parts = folder.split('/'); let currentPath = '';
   parts.forEach(p => { currentPath = currentPath ? `${currentPath}/${p}` : p; expandedFolders.add(currentPath); });
-  renderTabs(); renderSidebarFiles(); saveNow(); showToast('Created folder ' + folder);
+  renderTabs(); renderSidebarFiles(); saveCurrentProjectFiles(); showToast('Created folder ' + folder);
 }
 function renameFile(oldName, newName) {
   newName = (newName || '').trim().replace(/^\/+/, '').replace(/[\\:*?"<>|\x00-\x1F]/g, '');
@@ -505,7 +687,7 @@ function renameFile(oldName, newName) {
   const newModel = monaco.editor.createModel(oldContent, newLang, makeUri(newName));
   models[newName] = newModel; newModel.onDidChangeContent(() => { markDirtyState(newName); scheduleSave(); });
   if (window.__hookAutoRun) window.__hookAutoRun(newModel);
-  renderTabs(); renderSidebarFiles(); switchFile(activeFile); saveNow(); showToast('Renamed to ' + newName);
+  renderTabs(); renderSidebarFiles(); switchFile(activeFile); saveCurrentProjectFiles(); showToast('Renamed to ' + newName);
 }
 function deleteFile(name) {
   if (filesList.length <= 1) return showToast('Cannot delete the last file');
@@ -513,7 +695,7 @@ function deleteFile(name) {
   if (models[name]) { models[name].dispose(); delete models[name]; }
   delete FILES[name]; delete savedSnapshot[name]; filesList = filesList.filter(n => n !== name);
   if (activeFile === name) { activeFile = filesList[0]; editor.setModel(models[activeFile]); }
-  renderTabs(); renderSidebarFiles(); switchFile(activeFile); saveNow(); showToast('Deleted ' + name);
+  renderTabs(); renderSidebarFiles(); switchFile(activeFile); saveCurrentProjectFiles(); showToast('Deleted ' + name);
 }
 
 function openSidebar() { document.getElementById('sidebar').classList.remove('hidden'); document.getElementById('sidebarBackdrop').classList.add('show'); localStorage.setItem(SIDEBAR_KEY, '0'); }
@@ -530,7 +712,12 @@ function wireSidebar() {
   const fileFilter = document.getElementById('fileFilter');
   fileFilter.addEventListener('input', renderSidebarFiles);
   fileFilter.addEventListener('keydown', e => { if (e.key === 'Escape' && fileFilter.value) { fileFilter.value = ''; renderSidebarFiles(); }});
-  document.getElementById('btnReset').addEventListener('click', () => { if (!confirm('Reset all files?')) return; localStorage.clear(); location.reload(); });
+  
+  document.getElementById('btnReset').addEventListener('click', () => { 
+    if (!confirm('Reset ALL projects and settings? This cannot be undone.')) return; 
+    localStorage.clear(); location.reload(); 
+  });
+  
   document.getElementById('btnCloudSave').addEventListener('click', saveToCloud);
   document.getElementById('btnCloudLoad').addEventListener('click', loadFromCloud);
   document.getElementById('btnFirebaseLogin').addEventListener('click', () => {
@@ -625,20 +812,38 @@ async function downloadZip() {
     if (!window.JSZip) await loadScript('https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js');
     const zip = new window.JSZip(); Object.keys(models).forEach(k => zip.file(k, models[k].getValue()));
     const blob = await zip.generateAsync({ type: 'blob' }), url = URL.createObjectURL(blob), a = document.createElement('a');
-    a.href = url; a.download = 'idEditor-project.zip'; document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    a.href = url; a.download = `${projectsData[currentProjectId].name.replace(/\s+/g, '-')}.zip`; document.body.appendChild(a); a.click(); document.body.removeChild(a);
     setTimeout(() => URL.revokeObjectURL(url), 60000); showToast('Downloaded');
   } catch (e) { showToast('Zip failed'); }
 }
 function applyFontSize(n) { fontSize = Math.max(10, Math.min(24, n)); if (editor) editor.updateOptions({ fontSize }); localStorage.setItem(FONTSIZE_KEY, fontSize); updateStatusFont(); }
-function setTheme(theme) {
-  localStorage.setItem(THEME_KEY, theme); document.documentElement.setAttribute('data-theme', theme);
-  if (editor) monaco.editor.setTheme(theme === 'light' ? 'vs' : 'vs-dark');
-  const meta = document.querySelector('meta[name="theme-color"]'); if (meta) meta.content = theme === 'light' ? '#f3f3f3' : '#252526';
+
+function applyTheme(themeName) {
+  localStorage.setItem(THEME_KEY, themeName);
+  const isLight = (themeName === 'vs' || themeName === 'light' || themeName === 'github-light');
+  document.documentElement.setAttribute('data-theme', isLight ? 'light' : 'dark');
+  if (editor) monaco.editor.setTheme(themeName);
+  
+  const meta = document.querySelector('meta[name="theme-color"]'); 
+  if (meta) meta.content = isLight ? '#f3f3f3' : '#252526';
+  
+  const themeSelect = document.getElementById('themeSelect');
+  if (themeSelect) themeSelect.value = themeName;
 }
+
 function wireSettings() {
   document.getElementById('btnFontMinus').addEventListener('click', () => applyFontSize(fontSize - 1));
   document.getElementById('btnFontPlus').addEventListener('click', () => applyFontSize(fontSize + 1));
-  document.getElementById('btnTheme').addEventListener('click', () => { const cur = localStorage.getItem(THEME_KEY) || 'dark'; setTheme(cur === 'light' ? 'dark' : 'light'); });
+  
+  const themeSelect = document.getElementById('themeSelect');
+  themeSelect.value = currentTheme;
+  themeSelect.addEventListener('change', (e) => applyTheme(e.target.value));
+
+  document.getElementById('btnTheme').addEventListener('click', () => { 
+    const cur = localStorage.getItem(THEME_KEY) || 'vs-dark'; 
+    const next = cur === 'vs' ? 'vs-dark' : 'vs';
+    applyTheme(next);
+  });
 }
 
 let matches = [], matchIndex = -1, decorations = [];
@@ -730,11 +935,11 @@ async function executeCommand(raw) {
     case 'clear': termOutput.innerHTML = ''; break;
     case 'ls': addTermLine(filesList.join('    ')); break;
     case 'cat': if (!args[1] || !models[args[1]]) return addTermLine('File not found', 'error'); addTermLine(models[args[1]].getValue()); break;
-    case 'touch': if (!args[1]) return addTermLine('Usage: touch <file>', 'error'); if (FILES[args[1]]) return addTermLine('Exists', 'error'); FILES[args[1]] = { lang: langFromFilename(args[1]), content: '' }; filesList.push(args[1]); ensureModel(args[1]); renderTabs(); renderSidebarFiles(); saveNow(); addTermLine(`Created ${args[1]}`, 'success'); break;
-    case 'mkdir': if (!args[1]) return addTermLine('Usage: mkdir <folder>', 'error'); const placeholder = `${args[1]}/.gitkeep`; if (FILES[placeholder]) return addTermLine('Exists', 'error'); FILES[placeholder] = { lang: 'plaintext', content: '' }; filesList.push(placeholder); ensureModel(placeholder); renderTabs(); renderSidebarFiles(); saveNow(); addTermLine(`Created folder`, 'success'); break;
+    case 'touch': if (!args[1]) return addTermLine('Usage: touch <file>', 'error'); if (FILES[args[1]]) return addTermLine('Exists', 'error'); FILES[args[1]] = { lang: langFromFilename(args[1]), content: '' }; filesList.push(args[1]); ensureModel(args[1]); renderTabs(); renderSidebarFiles(); saveCurrentProjectFiles(); addTermLine(`Created ${args[1]}`, 'success'); break;
+    case 'mkdir': if (!args[1]) return addTermLine('Usage: mkdir <folder>', 'error'); const placeholder = `${args[1]}/.gitkeep`; if (FILES[placeholder]) return addTermLine('Exists', 'error'); FILES[placeholder] = { lang: 'plaintext', content: '' }; filesList.push(placeholder); ensureModel(placeholder); renderTabs(); renderSidebarFiles(); saveCurrentProjectFiles(); addTermLine(`Created folder`, 'success'); break;
     case 'run': run(); addTermLine('Preview triggered', 'success'); break;
     case 'format': await formatCurrent(); break;
-    case 'theme': if (args[1] === 'dark' || args[1] === 'light') { setTheme(args[1]); addTermLine(`Theme set to ${args[1]}`, 'success'); } else addTermLine('Usage: theme <dark|light>', 'error'); break;
+    case 'theme': if (args[1]) { applyTheme(args[1]); addTermLine(`Theme set to ${args[1]}`, 'success'); } else addTermLine('Usage: theme <vs-dark|vs|dracula|monokai>', 'error'); break;
     case 'git': handleGitCommand(args); break;
     case 'firebase': handleFirebaseCommand(args); break;
     default: addTermLine(`Command not found: ${cmd}`, 'error');
@@ -788,7 +993,7 @@ function wirePreviewControls() {
 }
 
 /* =========================================================
-   GITHUB REST API IMPLEMENTATION (NO PROXY NEEDED)
+   GITHUB REST API IMPLEMENTATION
    ========================================================= */
 
 function getRepoConfig() {
@@ -801,12 +1006,8 @@ function parseGitHubUrl(url) {
   return { owner: match[1], repo: match[2] };
 }
 
-function encodeBase64(str) {
-  return btoa(unescape(encodeURIComponent(str)));
-}
-function decodeBase64(str) {
-  return decodeURIComponent(escape(atob(str)));
-}
+function encodeBase64(str) { return btoa(unescape(encodeURIComponent(str))); }
+function decodeBase64(str) { return decodeURIComponent(escape(atob(str))); }
 
 async function handleGitCommand(args) {
   const sub = args[1];
@@ -838,11 +1039,14 @@ async function gitClone() {
   const headers = { 'Accept': 'application/vnd.github.v3+json' };
   if (token) headers['Authorization'] = `token ${token}`;
 
-  // 1. Get default branch
+  // 1. Get default branch and verify repo
   const repoRes = await fetch(`https://api.github.com/repos/${parsed.owner}/${parsed.repo}`, { headers });
   if (!repoRes.ok) throw new Error(`GitHub API: ${repoRes.status} ${repoRes.statusText}`);
   const repoData = await repoRes.json();
-  const branch = repoData.default_branch || 'main';
+  
+  const selectedBranch = document.getElementById('gitBranchSelect').value;
+  const branch = selectedBranch || repoData.default_branch || 'main';
+  localStorage.setItem(GIT_BRANCH_KEY, branch);
 
   // 2. Get file tree
   const treeRes = await fetch(`https://api.github.com/repos/${parsed.owner}/${parsed.repo}/git/trees/${branch}?recursive=1`, { headers });
@@ -877,19 +1081,13 @@ async function gitClone() {
 
   if (!filesList.length) filesList = ['index.html'];
   activeFile = filesList[0];
-  renderTabs(); renderSidebarFiles(); switchFile(activeFile); saveNow();
-  
-  localStorage.setItem('idEditor.gitBranch', branch);
-  localStorage.setItem('idEditor.gitOwner', parsed.owner);
-  localStorage.setItem('idEditor.gitRepoName', parsed.repo);
+  renderTabs(); renderSidebarFiles(); switchFile(activeFile); saveCurrentProjectFiles();
   
   showToast('Cloned successfully!');
-  addTermLine('Clone successful', 'success');
   updateGitStatus();
 }
 
 async function gitCommit() {
-  // In REST API, commit and push happen together in a single flow
   await gitPush();
 }
 
@@ -898,7 +1096,7 @@ async function gitPush() {
   const parsed = parseGitHubUrl(url);
   if (!parsed || !token) return showToast('Set repo URL and token in Git Settings');
   
-  const branch = localStorage.getItem('idEditor.gitBranch') || 'main';
+  const branch = localStorage.getItem(GIT_BRANCH_KEY) || 'main';
   const headers = { 'Accept': 'application/vnd.github.v3+json', 'Authorization': `token ${token}`, 'Content-Type': 'application/json' };
 
   try {
@@ -956,17 +1154,47 @@ async function gitPush() {
 
 async function updateGitStatus() {
   const el = document.getElementById('gitStatus');
+  const branchSelect = document.getElementById('gitBranchSelect');
   const { url, token } = getRepoConfig();
   const parsed = parseGitHubUrl(url);
-  if (!parsed) { el.textContent = 'Not connected'; return; }
+  
+  if (!parsed) { 
+    el.textContent = 'Not connected'; 
+    branchSelect.style.display = 'none';
+    return; 
+  }
   
   const headers = { 'Accept': 'application/vnd.github.v3+json' };
   if (token) headers['Authorization'] = `token ${token}`;
+  
   try {
     const res = await fetch(`https://api.github.com/repos/${parsed.owner}/${parsed.repo}`, { headers });
-    if (res.ok) el.textContent = `Connected: ${parsed.owner}/${parsed.repo}`;
-    else el.textContent = 'Not connected (Invalid URL/Token)';
-  } catch (e) { el.textContent = 'Not connected'; }
+    if (res.ok) {
+      el.textContent = `Connected: ${parsed.owner}/${parsed.repo}`;
+      
+      const branchRes = await fetch(`https://api.github.com/repos/${parsed.owner}/${parsed.repo}/branches`, { headers });
+      if (branchRes.ok) {
+        const branches = await branchRes.json();
+        const currentBranch = localStorage.getItem(GIT_BRANCH_KEY) || 'main';
+        
+        branchSelect.innerHTML = '';
+        branches.forEach(b => {
+          const opt = document.createElement('option');
+          opt.value = b.name;
+          opt.textContent = b.name;
+          if (b.name === currentBranch) opt.selected = true;
+          branchSelect.appendChild(opt);
+        });
+        branchSelect.style.display = 'block';
+      }
+    } else {
+      el.textContent = 'Not connected (Invalid URL/Token)';
+      branchSelect.style.display = 'none';
+    }
+  } catch (e) { 
+    el.textContent = 'Not connected'; 
+    branchSelect.style.display = 'none';
+  }
 }
 
 function wireGitUI() {
@@ -981,22 +1209,17 @@ function wireGitUI() {
     const url = document.getElementById('gitRepoUrl').value.trim();
     const token = document.getElementById('gitToken').value.trim();
     
-    // Save locally
     localStorage.setItem(GIT_URL_KEY, url);
     localStorage.setItem(GIT_TOKEN_KEY, token);
     
-    // Save to Firebase Firestore if logged in
     if (firebaseEnabled && fbUser) {
       try {
         const { doc, setDoc } = await import('https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js');
         await setDoc(doc(fbDb, 'users', fbUser.uid, 'settings', 'git'), {
-          url: url,
-          token: token,
-          updatedAt: new Date().toISOString()
+          url: url, token: token, updatedAt: new Date().toISOString()
         }, { merge: true });
         addTermLine('Git settings saved to Cloud', 'success');
       } catch (e) {
-        console.error('Failed to save git settings to cloud:', e);
         addTermLine('Failed to save Git settings to cloud', 'error');
       }
     }
@@ -1010,6 +1233,16 @@ function wireGitUI() {
   document.getElementById('btnGitCommit').addEventListener('click', gitCommit); 
   document.getElementById('btnGitPush').addEventListener('click', gitPush);
   document.getElementById('btnGitPull').addEventListener('click', gitClone); 
+  
+  document.getElementById('gitBranchSelect').addEventListener('change', (e) => {
+    const branch = e.target.value;
+    if (branch) {
+      localStorage.setItem(GIT_BRANCH_KEY, branch);
+      if (confirm(`Switch to branch "${branch}"? This will reload the files from that branch.`)) {
+        gitClone().catch(err => addTermLine('Switch failed: ' + err.message, 'error'));
+      }
+    }
+  });
   
   document.getElementById('btnGitGraph').addEventListener('click', () => {
     document.getElementById('gitGraphContainer').style.display = 'block';
@@ -1028,9 +1261,10 @@ async function renderGitGraph() {
   
   const headers = { 'Accept': 'application/vnd.github.v3+json' };
   if (token) headers['Authorization'] = `token ${token}`;
+  const branch = localStorage.getItem(GIT_BRANCH_KEY) || 'main';
 
   try {
-    const res = await fetch(`https://api.github.com/repos/${parsed.owner}/${parsed.repo}/commits`, { headers });
+    const res = await fetch(`https://api.github.com/repos/${parsed.owner}/${parsed.repo}/commits?sha=${branch}`, { headers });
     const commits = await res.json();
     if (!commits.length) return;
     
