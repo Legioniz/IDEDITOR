@@ -677,3 +677,53 @@ html[data-theme="light"] .m-act:active{ background:#d0d0d0; }
   .projects-actions { flex-direction: column; }
   .projects-actions .btn { width: 100%; justify-content: center; }
 }
+/* =========================================================
+   LIGHT THEME FIXES (Contrast & Colors)
+   ========================================================= */
+
+/* 1. Fix the faint section headers (Explorer, Source Control, etc.) */
+html[data-theme="light"] .side-head {
+  color: #555;
+}
+
+/* 2. Fix the dark background buttons in the sidebar grid */
+html[data-theme="light"] .side-grid .side-item {
+  background: #f0f0f0;
+  color: #1e1e1e;
+  border-color: #ccc;
+}
+
+html[data-theme="light"] .side-grid .side-item:hover {
+  background: #e0e0e0;
+  border-color: #aaa;
+}
+
+/* 3. Fix the Git Status text (e.g., "Clean" or "Connected") */
+html[data-theme="light"] .git-status {
+  color: #555;
+}
+
+/* 4. Ensure the "Commit Changes" button stays blue and visible */
+html[data-theme="light"] .btn.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #ffffff;
+}
+
+/* 5. Fix the folder hover state in the file tree */
+html[data-theme="light"] .tree-folder {
+  color: #333;
+}
+html[data-theme="light"] .tree-folder:hover {
+  background: rgba(0, 0, 0, 0.05);
+}
+html[data-theme="light"] .tree-folder-children {
+  border-left-color: #ccc;
+}
+
+/* 6. Fix the active file highlight */
+html[data-theme="light"] .side-item.active {
+  background: rgba(0, 102, 204, 0.12);
+  border-color: rgba(0, 102, 204, 0.35);
+  color: #003366;
+}
