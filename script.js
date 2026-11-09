@@ -59,7 +59,7 @@ const firebaseConfig = {
 
 let fbAuth = null, fbDb = null, fbUser = null;
 let firebaseEnabled = false;
-let authModule = null; // Store module globally
+let authModule = null; 
 
 async function initFirebase() {
   try {
@@ -264,7 +264,7 @@ const CORS_PROXY = '/api/proxy';
 async function loadGitLibraries() {
   try {
     const [gitModule, httpModule, fsModule] = await Promise.all([
-      import('https://esm.sh/isomorphic-git@1.38.6'), // Updated version
+      import('https://esm.sh/isomorphic-git@1.38.6'),
       import('https://esm.sh/isomorphic-git@1.38.6/http/web'),
       import('https://esm.sh/@isomorphic-git/lightning-fs@4.6.0')
     ]);
@@ -275,7 +275,7 @@ async function loadGitLibraries() {
     console.warn('Git failed to load', e); 
     gitEnabled = false; 
   }
-} // <--- BUG FIX: Added missing closing brace here
+}
 
 function getRepoConfig() {
   return { url: localStorage.getItem(GIT_URL_KEY) || '', token: localStorage.getItem(GIT_TOKEN_KEY) || '' };
@@ -424,18 +424,11 @@ document.addEventListener('keydown', e => {
    TIER 1 FEATURES
    ========================================================= */
 function wireTier1Features() {
-  // Fixed Command Palette Button
   document.getElementById('btnCmdPalette').addEventListener('click', (e) => {
     e.preventDefault();
     if (!editor) return;
-    
-    // Force focus back to the editor
     editor.focus();
-    
-    // Tiny delay to let mobile browsers register the focus before opening the palette
-    setTimeout(() => {
-      editor.trigger('', 'editor.action.quickCommand');
-    }, 50);
+    setTimeout(() => { editor.trigger('', 'editor.action.quickCommand'); }, 50);
   });
   
   const btnMinimap = document.getElementById('btnMinimap');
@@ -1185,7 +1178,11 @@ async function handleGitCommand(args) {
   }
   else if (sub === 'clone') {
     if (!args[2]) return addTermLine('Usage: git clone <url>', 'error');
+    
+    // FIX: Save the URL to localStorage so getRepoConfig() can find it
+    localStorage.setItem(GIT_URL_KEY, args[2]);
     document.getElementById('gitRepoUrl').value = args[2];
+    
     addTermLine(`Cloning: ${args[2]}...`, 'info');
     
     const loader = document.createElement('div');
@@ -1360,7 +1357,11 @@ async function syncFSToEditor() {
   Object.keys(models).forEach(k => delete models[k]);
   Object.keys(FILES).forEach(k => delete FILES[k]); 
   Object.keys(savedSnapshot).forEach(k => delete savedSnapshot[k]);
+  
+  // FIX: Reset folder expansion state so new cloned folders are visible
   filesList.length = 0;
+  expandedFolders.clear();
+  foldersInitialized = false;
   
   for (const name of filePaths) {
     let content = ''; try { content = await pfs.readFile(`${GIT_DIR}/${name}`, 'utf8'); } catch (e) { continue; }
@@ -1419,9 +1420,9 @@ async function gitPull() {
 }
 
 async function gitClone() {
-  if (!gitEnabled) return showToast('Git not available');
+  if (!gitEnabled) throw new Error('Git not available');
   const { url, token } = getRepoConfig(); 
-  if (!url || !token) return showToast('Set repo URL and token first');
+  if (!url) throw new Error('No repository URL provided.');
   
   const cloneTask = (async () => {
     try { await pfs.rmdir(GIT_DIR, { recursive: true }); } catch (e) {}
@@ -1430,7 +1431,8 @@ async function gitClone() {
       url, 
       singleBranch: true, 
       depth: 1, 
-      onAuth: () => ({ username: 'x-access-token', password: token }) 
+      // Only send auth if a token exists (allows public clones)
+      onAuth: token ? () => ({ username: 'x-access-token', password: token }) : undefined
     });
   })();
 
@@ -1440,15 +1442,13 @@ async function gitClone() {
 
   try {
     await Promise.race([cloneTask, timeoutTask]);
-    
     await syncFSToEditor(); 
     showToast('Cloned'); 
     updateGitStatus();
-    addTermLine('Clone successful', 'success');
   } catch (e) { 
     console.error(e); 
     showToast('Clone failed'); 
-    addTermLine('Clone failed: ' + e.message, 'error'); 
+    throw e; // Throw error so terminal can catch it
   }
 }
 
