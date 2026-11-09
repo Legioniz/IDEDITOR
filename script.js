@@ -264,8 +264,8 @@ const CORS_PROXY = '/api/proxy';
 async function loadGitLibraries() {
   try {
     const [gitModule, httpModule, fsModule] = await Promise.all([
-      import('https://esm.sh/isomorphic-git@1.38.6'),
-      import('https://esm.sh/isomorphic-git@1.38.6/http/web'),
+      import('https://esm.sh/isomorphic-git@1.25.2'),
+      import('https://esm.sh/isomorphic-git@1.25.2/http/web'),
       import('https://esm.sh/@isomorphic-git/lightning-fs@4.6.0')
     ]);
     git = gitModule.default; http = httpModule.default; LightningFS = fsModule.default;
@@ -1179,7 +1179,6 @@ async function handleGitCommand(args) {
   else if (sub === 'clone') {
     if (!args[2]) return addTermLine('Usage: git clone <url>', 'error');
     
-    // FIX: Save the URL to localStorage so getRepoConfig() can find it
     localStorage.setItem(GIT_URL_KEY, args[2]);
     document.getElementById('gitRepoUrl').value = args[2];
     
@@ -1193,6 +1192,8 @@ async function handleGitCommand(args) {
 
     try {
       await gitClone();
+    } catch (err) {
+      addTermLine('Clone failed: ' + err.message, 'error');
     } finally {
       if (loader.parentNode) loader.parentNode.removeChild(loader);
     }
@@ -1358,7 +1359,6 @@ async function syncFSToEditor() {
   Object.keys(FILES).forEach(k => delete FILES[k]); 
   Object.keys(savedSnapshot).forEach(k => delete savedSnapshot[k]);
   
-  // FIX: Reset folder expansion state so new cloned folders are visible
   filesList.length = 0;
   expandedFolders.clear();
   foldersInitialized = false;
@@ -1431,7 +1431,6 @@ async function gitClone() {
       url, 
       singleBranch: true, 
       depth: 1, 
-      // Only send auth if a token exists (allows public clones)
       onAuth: token ? () => ({ username: 'x-access-token', password: token }) : undefined
     });
   })();
@@ -1448,7 +1447,7 @@ async function gitClone() {
   } catch (e) { 
     console.error(e); 
     showToast('Clone failed'); 
-    throw e; // Throw error so terminal can catch it
+    throw e; 
   }
 }
 
