@@ -285,20 +285,25 @@ async function initFirebase() {
     }).catch((error) => console.error('Redirect login error:', error));
     
     onAuthStateChanged(fbAuth, (user) => {
-      fbUser = user;
-      if (user) {
-        loggedOutUI.style.display = 'none';
-        loggedInUI.style.display = 'block';
-        const displayName = user.displayName || user.email.split('@')[0];
-        nameEl.textContent = displayName;
-        avatarEl.textContent = displayName.charAt(0);
-        addTermLine('Firebase Connected: ' + displayName, 'success');
-        loadGitSettingsFromCloud(user.uid);
-      } else {
-        loggedInUI.style.display = 'none';
-        loggedOutUI.style.display = 'block';
-      }
-    });
+  fbUser = user;
+  if (user) {
+    loggedOutUI.style.display = 'none';
+    loggedInUI.style.display = 'block';
+    
+    // Safe check for email
+    const emailName = user.email ? user.email.split('@')[0] : 'User';
+    const displayName = user.displayName || emailName;
+    
+    nameEl.textContent = displayName;
+    avatarEl.textContent = displayName.charAt(0).toUpperCase();
+    addTermLine('Firebase Connected: ' + displayName, 'success');
+    
+    loadGitSettingsFromCloud(user.uid);
+  } else {
+    loggedInUI.style.display = 'none';
+    loggedOutUI.style.display = 'block';
+  }
+});
     firebaseEnabled = true;
   } catch (e) {
     console.warn('Firebase failed to load', e);

@@ -727,3 +727,15 @@ html[data-theme="light"] .side-item.active {
   border-color: rgba(0, 102, 204, 0.35);
   color: #003366;
 }
+/* Fix for mobile select dropdowns */
+select.git-input {
+  color: var(--fg) !important;
+  background-color: #1b1b1b !important;
+  -webkit-text-fill-color: var(--fg); /* Forces color on iOS Safari */
+}
+
+html[data-theme="light"] select.git-input {
+  color: #1e1e1e !important;
+  background-color: #ffffff !important;
+  -webkit-text-fill-color: #1e1e1e;
+}
