@@ -2,7 +2,7 @@
   --bg:#1e1e1e; --panel:#252526; --border:#3c3c3c;
   --fg:#dddddd; --accent:#0a84ff;
   --gap:8px; --radius:8px;
-  --sidebar-w: 240px;
+  --sidebar-w: 260px;
   --dirty:#ff7b72;
   --tap: 44px;
 }
@@ -120,6 +120,18 @@ html[data-theme="light"] .side-item.active{
   background:var(--dirty);
 }
 
+/* File Tree specific */
+.tree-folder {
+  display:flex; align-items:center; gap:6px;
+  padding:6px 10px; font-size:13px; font-weight:600;
+  color:#ccc; cursor:pointer; border-radius:6px;
+}
+.tree-folder:hover { background:rgba(255,255,255,.05); }
+.tree-folder svg { transition:transform .15s; }
+.tree-folder.collapsed svg { transform:rotate(-90deg); }
+.tree-folder-children { display:flex; flex-direction:column; gap:1px; margin-left:14px; border-left:1px solid #333; padding-left:4px; }
+.tree-folder-children.hidden { display:none; }
+
 .side-bottom{
   margin-top:auto;
   padding-top:8px;
@@ -164,11 +176,8 @@ html[data-theme="light"] .git-input{ background:#fff; color:#1e1e1e; }
   align-items:center;
   justify-content:center;
 }
-.git-buttons #btnGitSettings {
-  grid-column: span 3;
-}
+.git-buttons #btnGitSettings { grid-column: span 3; }
 
-/* Modal */
 .modal{
   position:fixed; inset:0;
   background:rgba(0,0,0,.7);
@@ -182,19 +191,11 @@ html[data-theme="light"] .git-input{ background:#fff; color:#1e1e1e; }
   width:100%; max-width:360px;
   box-shadow:0 20px 60px rgba(0,0,0,.6);
 }
-.modal-content h3{
-  margin:0 0 14px; font-size:16px; font-weight:600;
-}
-.modal-content .git-input{
-  width:100%; margin:0 0 10px;
-}
-.modal-buttons{
-  display:flex; gap:8px; margin-top:8px;
-}
+.modal-content h3{ margin:0 0 14px; font-size:16px; font-weight:600; }
+.modal-content .git-input{ width:100%; margin:0 0 10px; }
+.modal-buttons{ display:flex; gap:8px; margin-top:8px; }
 .modal-buttons .btn{ flex:1; }
-.modal-note{
-  font-size:11px; color:#888; margin:12px 0 0; line-height:1.4;
-}
+.modal-note{ font-size:11px; color:#888; margin:12px 0 0; line-height:1.4; }
 
 .main{ flex:1; display:flex; flex-direction:column; min-width:0; min-height:0; }
 
@@ -225,7 +226,6 @@ html[data-theme="light"] .tab.active{ color:#1e1e1e; }
   background:var(--dirty);
 }
 
-/* Special Preview Tab styling */
 .tab-preview { color: #38bdf8; }
 .tab-preview.active { color: #38bdf8; border-bottom-color: #38bdf8; }
 
@@ -290,7 +290,6 @@ html[data-theme="light"] .findbar textarea{ background:#fff; color:#1e1e1e; bord
 }
 .output-pane.show{ display:flex; }
 
-/* When Preview is in Tab mode, it fills the whole panes area */
 .panes.preview-tab-mode .editor-pane,
 .panes.preview-tab-mode .resizer {
   display: none !important;
@@ -390,25 +389,15 @@ html[data-theme="light"] .m-act:active{ background:#d0d0d0; }
 .match-all{ background:rgba(255,200,0,.32); border-radius:2px; }
 .match-current{ background:rgba(255,140,0,.85); color:#111 !important; border-radius:2px; }
 
-/* Split pane resizer */
 .resizer {
-  position: relative;
-  flex-shrink: 0;
-  z-index: 10;
-  background: var(--border);
-  transition: background 0.15s;
+  position: relative; flex-shrink: 0; z-index: 10;
+  background: var(--border); transition: background 0.15s;
   touch-action: none;
 }
 .resizer::before {
-  content: '';
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  background: #666;
-  border-radius: 4px;
+  content: ''; position: absolute; top: 50%; left: 50%;
+  transform: translate(-50%, -50%); background: #666; border-radius: 4px;
 }
-
 @media (min-width: 900px) {
   .resizer { display: block; width: 6px; cursor: col-resize; }
   .resizer::before { width: 2px; height: 24px; }

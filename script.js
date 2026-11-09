@@ -163,6 +163,10 @@ function escapeHtml(s) {
     .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
+function basename(path) {
+  return path.split('/').pop();
+}
+
 function langFromFilename(name) {
   const ext = (name.split('.').pop() || '').toLowerCase();
   return {
@@ -415,7 +419,7 @@ function wireTier1Features() {
     if (!files.length) return;
     let firstImported = null;
     for (const file of files) {
-      const name = file.name;
+      const name = file.name; // Note: full paths require webkitdirectory, but we keep it simple here
       if (FILES[name] && !confirm(`File "${name}" already exists. Overwrite?`)) continue;
       if (models[name]) { models[name].dispose(); delete models[name]; }
       const content = await file.text();
@@ -492,7 +496,7 @@ function wireTier1Features() {
    STATUS, SAVE, RENDER, CLIPBOARD, ETC.
    ========================================================= */
 function updateStatusFont() { const el = document.getElementById('statusFont'); if (el) el.textContent = fontSize + 'px'; }
-function updateStatusFile() { const el = document.getElementById('statusFile'); if (el) el.textContent = activeFile; }
+function updateStatusFile() { const el = document.getElementById('statusFile'); if (el) el.textContent = basename(activeFile); }
 
 function findTabEl(name) { return Array.from(document.querySelectorAll('.tab')).find(t => t.dataset.file === name) || null; }
 function findSideItemEl(name) { return Array.from(document.querySelectorAll('.side-item[data-file]')).find(t => t.dataset.file === name) || null; }
@@ -522,11 +526,14 @@ function renderTabs() {
   const nav = document.getElementById('tabs'); nav.innerHTML = '';
   filesList.forEach(name => {
     const btn = document.createElement('button');
-    btn.className = 'tab' + (name === activeFile ? ' active' : ''); btn.dataset.file = name; btn.textContent = name;
-    attachFileMenuHandlers(btn, name); nav.appendChild(btn);
+    btn.className = 'tab' + (name === activeFile ? ' active' : ''); 
+    btn.dataset.file = name; 
+    btn.textContent = basename(name); 
+    btn.title = name;
+    attachFileMenuHandlers(btn, name); 
+    nav.appendChild(btn);
   });
   
-  // Add Preview Tab
   const prevBtn = document.createElement('button');
   prevBtn.className = 'tab tab-preview' + (activeFile === 'preview' ? ' active' : '');
   prevBtn.dataset.file = 'preview';
@@ -539,15 +546,76 @@ function renderTabs() {
   filesList.forEach(markDirtyState);
 }
 
+/* =========================================================
+   FILE TREE RENDERING
+   ========================================================= */
+const expandedFolders = new Set();
+
 function renderSidebarFiles() {
   const list = document.getElementById('sideFiles'); list.innerHTML = '';
-  filesList.forEach(name => {
-    const btn = document.createElement('button');
-    btn.className = 'side-item' + (name === activeFile ? ' active' : ''); btn.dataset.file = name;
-    btn.innerHTML = '<svg viewBox="0 0 24 24" width="15" height="15"><path d="M6 3h9l4 4v14a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z" stroke="currentColor" stroke-width="1.8" fill="none"/><path d="M14 3v5h5" stroke="currentColor" stroke-width="1.8" fill="none"/></svg><span>' + escapeHtml(name) + '</span>';
-    attachFileMenuHandlers(btn, name, () => { switchFile(name); if (isMobile()) closeSidebar(); });
-    list.appendChild(btn);
+  
+  // Build tree structure
+  const tree = {};
+  filesList.forEach(path => {
+    const parts = path.split('/');
+    let current = tree;
+    parts.forEach((part, i) => {
+      if (!current[part]) current[part] = (i === parts.length - 1) ? 'FILE' : {};
+      current = current[part];
+    });
   });
+
+  function buildNode(node, path, container) {
+    // Sort keys: folders first, then files
+    const keys = Object.keys(node).sort((a, b) => {
+      const aIsFile = node[a] === 'FILE';
+      const bIsFile = node[b] === 'FILE';
+      if (aIsFile && !bIsFile) return 1;
+      if (!aIsFile && bIsFile) return -1;
+      return a.localeCompare(b);
+    });
+
+    keys.forEach(key => {
+      const fullPath = path ? `${path}/${key}` : key;
+      if (node[key] === 'FILE') {
+        // Render File
+        const btn = document.createElement('button');
+        btn.className = 'side-item' + (fullPath === activeFile ? ' active' : ''); 
+        btn.dataset.file = fullPath;
+        btn.innerHTML = '<svg viewBox="0 0 24 24" width="15" height="15"><path d="M6 3h9l4 4v14a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z" stroke="currentColor" stroke-width="1.8" fill="none"/><path d="M14 3v5h5" stroke="currentColor" stroke-width="1.8" fill="none"/></svg><span>' + escapeHtml(key) + '</span>';
+        attachFileMenuHandlers(btn, fullPath, () => { switchFile(fullPath); if (isMobile()) closeSidebar(); });
+        container.appendChild(btn);
+      } else {
+        // Render Folder
+        const folderDiv = document.createElement('div');
+        const isExpanded = expandedFolders.has(fullPath) || expandedFolders.size === 0; // Expand all by default on first load
+        if (isExpanded) expandedFolders.add(fullPath);
+
+        const folderHeader = document.createElement('div');
+        folderHeader.className = 'tree-folder' + (isExpanded ? '' : ' collapsed');
+        folderHeader.innerHTML = `<svg viewBox="0 0 24 24" width="14" height="14"><path d="M9 18l6-6-6-6" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg><span>${escapeHtml(key)}</span>`;
+        
+        const childrenContainer = document.createElement('div');
+        childrenContainer.className = 'tree-folder-children' + (isExpanded ? '' : ' hidden');
+
+        folderHeader.addEventListener('click', () => {
+          const nowCollapsed = !childrenContainer.classList.contains('hidden');
+          childrenContainer.classList.toggle('hidden', nowCollapsed);
+          folderHeader.classList.toggle('collapsed', nowCollapsed);
+          if (nowCollapsed) expandedFolders.delete(fullPath);
+          else expandedFolders.add(fullPath);
+        });
+
+        folderDiv.appendChild(folderHeader);
+        folderDiv.appendChild(childrenContainer);
+        container.appendChild(folderDiv);
+        
+        buildNode(node[key], fullPath, childrenContainer);
+      }
+    });
+  }
+
+  buildNode(tree, '', list);
   filesList.forEach(markDirtyState);
 }
 
@@ -591,31 +659,72 @@ function attachFileMenuHandlers(el, filename, onClickOverride) {
 }
 
 function promptNewFile() {
-  const raw = prompt('New file name (e.g. about.html, utils.js):'); if (!raw) return;
-  let name = raw.trim().replace(/[\/\\:*?"<>|\x00-\x1F]/g, ''); if (!name) return showToast('Invalid name');
-  if (!/\.[a-z0-9]+$/i.test(name)) name += '.txt'; if (FILES[name]) return showToast('File already exists');
-  FILES[name] = { lang: langFromFilename(name), content: '' }; filesList.push(name); ensureModel(name);
+  const raw = prompt('New file path (e.g. src/utils.js):'); if (!raw) return;
+  let name = raw.trim().replace(/^\/+/, '').replace(/[\\:*?"<>|\x00-\x1F]/g, ''); 
+  if (!name) return showToast('Invalid name');
+  if (!/\.[a-z0-9]+$/i.test(name)) name += '.txt'; 
+  if (FILES[name]) return showToast('File already exists');
+  
+  FILES[name] = { lang: langFromFilename(name), content: '' }; 
+  filesList.push(name); 
+  ensureModel(name);
   renderTabs(); renderSidebarFiles(); switchFile(name); saveNow(); showToast('Created ' + name);
 }
+
+function promptNewFolder() {
+  const raw = prompt('New folder path (e.g. src/components):'); if (!raw) return;
+  let folder = raw.trim().replace(/^\/+/, '').replace(/[\\:*?"<>|\x00-\x1F]/g, ''); 
+  if (!folder) return showToast('Invalid name');
+  
+  // Create a placeholder file so the folder exists
+  const placeholder = `${folder}/.gitkeep`;
+  if (FILES[placeholder]) return showToast('Folder already exists');
+  
+  FILES[placeholder] = { lang: 'plaintext', content: '' }; 
+  filesList.push(placeholder); 
+  ensureModel(placeholder);
+  
+  // Auto-expand the new folder
+  const parts = folder.split('/');
+  let currentPath = '';
+  parts.forEach(p => { currentPath = currentPath ? `${currentPath}/${p}` : p; expandedFolders.add(currentPath); });
+  
+  renderTabs(); renderSidebarFiles(); saveNow(); showToast('Created folder ' + folder);
+}
+
 function renameFile(oldName, newName) {
-  newName = (newName || '').trim().replace(/[\/\\:*?"<>|\x00-\x1F]/g, ''); if (!newName) return showToast('Invalid name');
-  if (newName === oldName) return; if (FILES[newName]) return showToast('File already exists');
+  newName = (newName || '').trim().replace(/^\/+/, '').replace(/[\\:*?"<>|\x00-\x1F]/g, ''); 
+  if (!newName) return showToast('Invalid name');
+  if (newName === oldName) return; 
+  if (FILES[newName]) return showToast('File already exists');
+  
   const oldModel = models[oldName], oldContent = oldModel ? oldModel.getValue() : '', newLang = langFromFilename(newName);
   if (oldModel) oldModel.dispose(); delete models[oldName];
+  
   FILES[newName] = { lang: newLang, content: oldContent }; delete FILES[oldName];
   savedSnapshot[newName] = savedSnapshot[oldName] || oldContent; delete savedSnapshot[oldName];
-  filesList = filesList.map(n => n === oldName ? newName : n); if (activeFile === oldName) activeFile = newName;
+  filesList = filesList.map(n => n === oldName ? newName : n); 
+  if (activeFile === oldName) activeFile = newName;
+  
   const newModel = monaco.editor.createModel(oldContent, newLang, makeUri(newName));
   models[newName] = newModel; newModel.onDidChangeContent(() => { markDirtyState(newName); scheduleSave(); });
   if (window.__hookAutoRun) window.__hookAutoRun(newModel);
+  
   renderTabs(); renderSidebarFiles(); switchFile(activeFile); saveNow(); showToast('Renamed to ' + newName);
 }
+
 function deleteFile(name) {
   if (filesList.length <= 1) return showToast('Cannot delete the last file');
   if (!confirm('Delete "' + name + '"? This cannot be undone.')) return;
+  
   if (models[name]) { models[name].dispose(); delete models[name]; }
-  delete FILES[name]; delete savedSnapshot[name]; filesList = filesList.filter(n => n !== name);
-  if (activeFile === name) { activeFile = filesList[0]; editor.setModel(models[activeFile]); }
+  delete FILES[name]; delete savedSnapshot[name]; 
+  filesList = filesList.filter(n => n !== name);
+  
+  if (activeFile === name) { 
+    activeFile = filesList[0]; 
+    editor.setModel(models[activeFile]); 
+  }
   renderTabs(); renderSidebarFiles(); switchFile(activeFile); saveNow(); showToast('Deleted ' + name);
 }
 
@@ -628,6 +737,10 @@ function wireSidebar() {
   const stored = localStorage.getItem(SIDEBAR_KEY);
   if (stored === '1' || (!stored && isMobile())) sidebar.classList.add('hidden'); else if (isMobile()) backdrop.classList.add('show');
   toggle.addEventListener('click', toggleSidebar); backdrop.addEventListener('click', closeSidebar);
+  
+  document.getElementById('btnNewFile').addEventListener('click', promptNewFile);
+  document.getElementById('btnNewFolder').addEventListener('click', promptNewFolder);
+  
   document.getElementById('btnReset').addEventListener('click', () => {
     if (!confirm('Reset all files and settings to defaults?')) return;
     try { localStorage.clear(); } catch (e) {} location.reload();
@@ -637,14 +750,13 @@ function wireSidebar() {
 }
 
 /* =========================================================
-   PREVIEW TAB SWITCHING LOGIC
+   FILE SWITCH & PREVIEW TAB LOGIC
    ========================================================= */
 function switchFile(file) {
   if (file !== 'preview' && !models[file]) return;
   
   activeFile = file;
   
-  // Update Tabs UI
   document.querySelectorAll('.tab').forEach(b => b.classList.toggle('active', b.dataset.file === file));
   document.querySelectorAll('.side-item[data-file]').forEach(b => b.classList.toggle('active', b.dataset.file === file));
   
@@ -652,21 +764,16 @@ function switchFile(file) {
   const outputPane = document.getElementById('outputPane');
 
   if (file === 'preview') {
-    // Show Preview Tab Mode
     panes.classList.add('preview-tab-mode');
     outputPane.classList.add('show');
     document.getElementById('editor').style.display = 'none';
     document.getElementById('statusFile').textContent = 'Preview';
     run();
   } else {
-    // Show Editor Mode
     panes.classList.remove('preview-tab-mode');
     document.getElementById('editor').style.display = 'block';
-    if (!outputPane.classList.contains('fullscreen')) {
-      // Keep split view, but ensure editor is showing
-    }
     editor.setModel(models[file]);
-    document.getElementById('statusFile').textContent = file;
+    document.getElementById('statusFile').textContent = basename(file);
     clearDecorations(); 
     if (findbar.classList.contains('show')) refreshMatches(); 
   }
@@ -847,18 +954,13 @@ function addConsoleLine(type, msg) {
 }
 window.addEventListener('message', e => { const d = e.data; if (!d || d.__preview !== true) return; addConsoleLine(d.type, d.msg); });
 
-/* =========================================================
-   PREVIEW CONTROLS (Close, Fullscreen, etc.)
-   ========================================================= */
 function wirePreviewControls() {
   const outputPane = document.getElementById('outputPane'), btnFullscreen = document.getElementById('btnFullscreen'), btnOpen = document.getElementById('btnOpen'), btnAuto = document.getElementById('btnAuto'), btnClose = document.getElementById('btnClosePreview');
   
-  // NEW: Close Preview Button
   btnClose.addEventListener('click', () => {
     outputPane.classList.remove('show');
     document.getElementById('panes').classList.remove('preview-tab-mode');
     document.getElementById('editor').style.display = 'block';
-    // Switch to the first file if we are currently on the preview tab
     if (activeFile === 'preview') switchFile(filesList[0]);
   });
 
@@ -877,21 +979,54 @@ function wirePreviewControls() {
 }
 
 /* =========================================================
-   GIT — operations
+   GIT — operations (Handling nested folders)
    ========================================================= */
 async function ensureRepoDir() { if (!gitEnabled) return; try { await pfs.mkdir(GIT_DIR); } catch (e) {} }
+
 async function syncFilesToFS() {
   if (!gitEnabled) return; await ensureRepoDir();
-  for (const name of filesList) { const content = models[name] ? models[name].getValue() : ''; await pfs.writeFile(`${GIT_DIR}/${name}`, content, 'utf8'); }
+  for (const name of filesList) { 
+    const content = models[name] ? models[name].getValue() : ''; 
+    const dir = name.substring(0, name.lastIndexOf('/'));
+    if (dir) {
+      // Create directories recursively if they don't exist
+      await pfs.mkdir(`${GIT_DIR}/${dir}`, { recursive: true });
+    }
+    await pfs.writeFile(`${GIT_DIR}/${name}`, content, 'utf8'); 
+  }
 }
+
+// Recursive helper to read nested files from LightningFS
+async function walkDir(dir, base = '') {
+  let files = [];
+  try {
+    const entries = await pfs.readdir(dir);
+    for (const entry of entries) {
+      if (entry === '.git' || entry === '.gitkeep') continue;
+      const fullPath = `${dir}/${entry}`;
+      const stat = await pfs.stat(fullPath);
+      if (stat.isDirectory()) {
+        files = files.concat(await walkDir(fullPath, `${base}${entry}/`));
+      } else {
+        files.push(`${base}${entry}`);
+      }
+    }
+  } catch (e) {}
+  return files;
+}
+
 async function syncFSToEditor() {
-  if (!gitEnabled) return; let files = [];
-  try { files = await pfs.readdir(GIT_DIR); } catch (e) { return; }
-  const newFiles = files.filter(f => f !== '.git' && !f.startsWith('.'));
-  Object.keys(models).forEach(k => { try { models[k].dispose(); } catch (e) {} }); Object.keys(models).forEach(k => delete models[k]);
-  Object.keys(FILES).forEach(k => delete FILES[k]); Object.keys(savedSnapshot).forEach(k => delete savedSnapshot[k]);
+  if (!gitEnabled) return; 
+  let filePaths = [];
+  try { filePaths = await walkDir(GIT_DIR); } catch (e) { return; }
+  
+  Object.keys(models).forEach(k => { try { models[k].dispose(); } catch (e) {} }); 
+  Object.keys(models).forEach(k => delete models[k]);
+  Object.keys(FILES).forEach(k => delete FILES[k]); 
+  Object.keys(savedSnapshot).forEach(k => delete savedSnapshot[k]);
   filesList.length = 0;
-  for (const name of newFiles) {
+  
+  for (const name of filePaths) {
     let content = ''; try { content = await pfs.readFile(`${GIT_DIR}/${name}`, 'utf8'); } catch (e) { continue; }
     FILES[name] = { lang: langFromFilename(name), content }; filesList.push(name); ensureModel(name);
   }
@@ -899,6 +1034,7 @@ async function syncFSToEditor() {
   if (!filesList.includes(activeFile)) activeFile = filesList[0];
   renderTabs(); renderSidebarFiles(); switchFile(activeFile); saveNow(); showToast('Files synced from Git');
 }
+
 async function updateGitStatus() {
   const el = document.getElementById('gitStatus'); if (!el) return;
   if (!gitEnabled) { el.textContent = 'Git unavailable'; return; }
@@ -908,17 +1044,22 @@ async function updateGitStatus() {
     if (changed.length === 0) el.textContent = 'Clean'; else el.textContent = changed.length + ' change(s)';
   } catch (e) { el.textContent = 'Not connected'; }
 }
+
 async function gitCommit() {
   if (!gitEnabled) return showToast('Git not available');
   const msg = (document.getElementById('gitMessage').value || '').trim(); if (!msg) return showToast('Enter a commit message');
   try {
     await ensureRepoDir(); try { await pfs.readdir(`${GIT_DIR}/.git`); } catch (e) { await git.init({ fs: gitFs, dir: GIT_DIR }); }
     await syncFilesToFS();
-    for (const name of filesList) { try { await git.add({ fs: gitFs, dir: GIT_DIR, filepath: name }); } catch (e) {} }
+    // Use a recursive add for all files
+    for (const name of filesList) { 
+      try { await git.add({ fs: gitFs, dir: GIT_DIR, filepath: name }); } catch (e) { console.warn('Add error:', name, e); } 
+    }
     await git.commit({ fs: gitFs, dir: GIT_DIR, message: msg, author: { name: 'IDEDITOR', email: 'editor@example.com' } });
     document.getElementById('gitMessage').value = ''; showToast('Committed'); updateGitStatus();
   } catch (e) { console.error(e); showToast('Commit failed: ' + (e && e.message ? e.message : e)); }
 }
+
 async function gitPush() {
   if (!gitEnabled) return showToast('Git not available');
   const { url, token } = getRepoConfig(); if (!url || !token) return showToast('Set repo URL and token in Git Settings');
@@ -928,6 +1069,7 @@ async function gitPush() {
     showToast('Pushed'); updateGitStatus();
   } catch (e) { console.error(e); showToast('Push failed: ' + (e && e.message ? e.message : e)); }
 }
+
 async function gitPull() {
   if (!gitEnabled) return showToast('Git not available');
   const { url, token } = getRepoConfig(); if (!url || !token) return showToast('Set repo URL and token in Git Settings');
@@ -937,6 +1079,7 @@ async function gitPull() {
     await syncFSToEditor(); showToast('Pulled'); updateGitStatus();
   } catch (e) { console.error(e); showToast('Pull failed: ' + (e && e.message ? e.message : e)); }
 }
+
 async function gitClone() {
   if (!gitEnabled) return showToast('Git not available');
   const { url, token } = getRepoConfig(); if (!url || !token) return showToast('Set repo URL and token first');
@@ -946,6 +1089,7 @@ async function gitClone() {
     await syncFSToEditor(); showToast('Cloned'); updateGitStatus();
   } catch (e) { console.error(e); showToast('Clone failed: ' + (e && e.message ? e.message : e)); }
 }
+
 async function renderGitGraph() {
   const svg = document.getElementById('gitGraphSvg'); svg.innerHTML = '';
   if (!gitEnabled) return showToast('Git not available');
