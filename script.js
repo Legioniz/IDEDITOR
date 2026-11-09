@@ -70,33 +70,36 @@ async function initFirebase() {
     fbAuth = getAuth(app);
     fbDb = getFirestore(app);
 
+    const loggedOutUI = document.getElementById('firebaseLoggedOut');
+    const loggedInUI = document.getElementById('firebaseLoggedIn');
+    const avatarEl = document.getElementById('userAvatar');
+    const nameEl = document.getElementById('userName');
+
     onAuthStateChanged(fbAuth, (user) => {
       fbUser = user;
-      const statusEl = document.getElementById('firebaseStatus');
-      const btnLogin = document.getElementById('btnFirebaseLogin');
       
       if (user) {
-        if (statusEl) statusEl.textContent = `Logged in as ${user.displayName || user.email}`;
-        if (btnLogin) {
-          btnLogin.textContent = 'Logout';
-          btnLogin.onclick = () => signOut(fbAuth);
-        }
-        showToast('Firebase Connected');
-        addTermLine('Firebase Connected as ' + user.email, 'success');
+        loggedOutUI.style.display = 'none';
+        loggedInUI.style.display = 'block';
+        
+        const displayName = user.displayName || user.email.split('@')[0];
+        nameEl.textContent = displayName;
+        avatarEl.textContent = displayName.charAt(0);
+        
+        showToast('Logged in as ' + displayName);
+        addTermLine('Firebase Connected: ' + displayName, 'success');
       } else {
-        if (statusEl) statusEl.textContent = 'Not logged in';
-        if (btnLogin) {
-          btnLogin.textContent = 'Login';
-          btnLogin.onclick = () => signInWithPopup(fbAuth, new GoogleAuthProvider());
-        }
+        loggedInUI.style.display = 'none';
+        loggedOutUI.style.display = 'block';
       }
     });
     
+    document.getElementById('btnFirebaseLogin').addEventListener('click', () => signInWithPopup(fbAuth, new GoogleAuthProvider()));
+    document.getElementById('btnFirebaseLogout').addEventListener('click', () => signOut(fbAuth));
+
     firebaseEnabled = true;
   } catch (e) {
     console.warn('Firebase failed to load', e);
-    const statusEl = document.getElementById('firebaseStatus');
-    if (statusEl) statusEl.textContent = 'Firebase error';
     addTermLine('Firebase failed to load', 'error');
   }
 }
@@ -733,11 +736,18 @@ function openSidebar() { document.getElementById('sidebar').classList.remove('hi
 function closeSidebar() { document.getElementById('sidebar').classList.add('hidden'); document.getElementById('sidebarBackdrop').classList.remove('show'); localStorage.setItem(SIDEBAR_KEY, '1'); }
 function toggleSidebar() { const sidebar = document.getElementById('sidebar'); if (sidebar.classList.contains('hidden')) openSidebar(); else closeSidebar(); }
 
+/* =========================================================
+   SIDEBAR WIRING
+   ========================================================= */
 function wireSidebar() {
   const sidebar = document.getElementById('sidebar'), toggle = document.getElementById('btnSidebarToggle'), backdrop = document.getElementById('sidebarBackdrop');
   const stored = localStorage.getItem(SIDEBAR_KEY);
-  if (stored === '1' || (!stored && isMobile())) sidebar.classList.add('hidden'); else if (isMobile()) backdrop.classList.add('show');
-  toggle.addEventListener('click', toggleSidebar); backdrop.addEventListener('click', closeSidebar);
+  
+  if (stored === '1' || (!stored && isMobile())) sidebar.classList.add('hidden'); 
+  else if (isMobile()) backdrop.classList.add('show');
+  
+  toggle.addEventListener('click', toggleSidebar); 
+  backdrop.addEventListener('click', closeSidebar);
   
   document.getElementById('btnNewFile').addEventListener('click', promptNewFile);
   document.getElementById('btnNewFolder').addEventListener('click', promptNewFolder);
@@ -746,6 +756,7 @@ function wireSidebar() {
     if (!confirm('Reset all files and settings to defaults?')) return;
     try { localStorage.clear(); } catch (e) {} location.reload();
   });
+  
   document.getElementById('btnCloudSave').addEventListener('click', saveToCloud);
   document.getElementById('btnCloudLoad').addEventListener('click', loadFromCloud);
 }
@@ -931,14 +942,14 @@ function replaceAll() {
 function wireRun() { document.getElementById('btnRun').addEventListener('click', run); }
 
 /* =========================================================
-   CONSOLE & TERMINAL (Refactored Global Panel)
+   CONSOLE & TERMINAL (Global Panel)
    ========================================================= */
 const consoleEl = document.getElementById('console');
 const termEl = document.getElementById('terminal');
 const termOutput = document.getElementById('termOutput');
 const termInput = document.getElementById('termInput');
 const bottomPanel = document.getElementById('bottomPanel');
-let activePanel = 'console'; // 'console' or 'terminal'
+let activePanel = 'console';
 
 function setActivePanel(panel) {
   activePanel = panel;
@@ -957,7 +968,6 @@ function setActivePanel(panel) {
 }
 
 function wireConsole() {
-  // Toggle global panel button
   document.getElementById('btnTogglePanel').addEventListener('click', () => {
     bottomPanel.classList.toggle('hidden');
     if (!bottomPanel.classList.contains('hidden')) {
@@ -968,17 +978,14 @@ function wireConsole() {
     }
   });
 
-  // Close panel button
   document.getElementById('btnClosePanel').addEventListener('click', () => {
     bottomPanel.classList.add('hidden');
     if (editor) editor.layout();
   });
 
-  // Tabs
   document.getElementById('btnTabConsole').addEventListener('click', () => setActivePanel('console'));
   document.getElementById('btnTabTerminal').addEventListener('click', () => setActivePanel('terminal'));
 
-  // Copy/Clear
   document.getElementById('btnCopyPanel').addEventListener('click', async () => {
     const text = activePanel === 'console' 
       ? Array.from(consoleEl.children).map(el => el.textContent).join('\n')
@@ -992,7 +999,6 @@ function wireConsole() {
     else termOutput.innerHTML = '';
   });
 
-  // Terminal Input
   termInput.addEventListener('keydown', e => {
     if (e.key === 'Enter') {
       const cmd = termInput.value.trim();
@@ -1138,7 +1144,16 @@ async function handleGitCommand(args) {
     if (!args[2]) return addTermLine('Usage: git clone <url>', 'error');
     document.getElementById('gitRepoUrl').value = args[2];
     addTermLine(`Cloning: ${args[2]}...`, 'info');
+    
+    const loader = document.createElement('div');
+    loader.className = 'term-line term-info';
+    loader.textContent = '⏳ Downloading repository... (this may take a minute)';
+    termOutput.appendChild(loader);
+    termOutput.scrollTop = termOutput.scrollHeight;
+
     await gitClone();
+    
+    if (loader.parentNode) loader.parentNode.removeChild(loader);
   }
   else {
     addTermLine('Unknown git command', 'error');
@@ -1171,7 +1186,6 @@ function addConsoleLine(type, msg) {
   const head = document.getElementById('consoleHead'); 
   if (head && activePanel !== 'console') head.classList.add('has-new');
   
-  // Auto open panel on error
   if (type === 'error' && bottomPanel.classList.contains('hidden')) {
     bottomPanel.classList.remove('hidden');
     setActivePanel('console');
@@ -1212,8 +1226,54 @@ function wirePreviewControls() {
 }
 
 /* =========================================================
-   GIT — operations (Handling nested folders)
+   GIT WIRING & OPERATIONS
    ========================================================= */
+function wireGit() {
+  if (!gitEnabled) { 
+    const st = document.getElementById('gitStatus'); 
+    if (st) st.textContent = 'Git unavailable (check console)'; 
+    return; 
+  }
+  
+  document.getElementById('btnGitSettings').addEventListener('click', () => {
+    const { url, token } = getRepoConfig(); 
+    document.getElementById('gitRepoUrl').value = url; 
+    document.getElementById('gitToken').value = token; 
+    document.getElementById('gitSettingsModal').style.display = 'flex';
+  });
+  
+  document.getElementById('btnGitSaveSettings').addEventListener('click', async () => {
+    const url = document.getElementById('gitRepoUrl').value.trim(), token = document.getElementById('gitToken').value.trim();
+    localStorage.setItem(GIT_URL_KEY, url); 
+    localStorage.setItem(GIT_TOKEN_KEY, token);
+    document.getElementById('gitSettingsModal').style.display = 'none'; 
+    showToast('Git settings saved');
+    
+    try {
+      const files = await pfs.readdir(GIT_DIR);
+      if (!files.includes('.git')) { 
+        if (confirm('Clone this repository into the editor? Current files will be replaced.')) gitClone(); 
+      } else {
+        updateGitStatus();
+      }
+    } catch (e) { 
+      if (confirm('Clone this repository into the editor? Current files will be replaced.')) gitClone(); 
+    }
+  });
+  
+  document.getElementById('btnGitCloseSettings').addEventListener('click', () => document.getElementById('gitSettingsModal').style.display = 'none');
+  document.getElementById('btnGitCommit').addEventListener('click', gitCommit);
+  document.getElementById('btnGitPush').addEventListener('click', gitPush);
+  document.getElementById('btnGitPull').addEventListener('click', gitPull);
+  document.getElementById('btnGitGraph').addEventListener('click', () => { 
+    renderGitGraph(); 
+    document.getElementById('gitGraphContainer').style.display = 'block'; 
+  });
+  
+  document.getElementById('btnGitCloseGraph').addEventListener('click', () => document.getElementById('gitGraphContainer').style.display = 'none');
+  updateGitStatus();
+}
+
 async function ensureRepoDir() { if (!gitEnabled) return; try { await pfs.mkdir(GIT_DIR); } catch (e) {} }
 
 async function syncFilesToFS() {
@@ -1343,26 +1403,4 @@ async function renderGitGraph() {
       }
     });
   });
-}
-function wireGit() {
-  if (!gitEnabled) { const st = document.getElementById('gitStatus'); if (st) st.textContent = 'Git unavailable (check console)'; return; }
-  document.getElementById('btnGitSettings').addEventListener('click', () => {
-    const { url, token } = getRepoConfig(); document.getElementById('gitRepoUrl').value = url; document.getElementById('gitToken').value = token; document.getElementById('gitSettingsModal').style.display = 'flex';
-  });
-  document.getElementById('btnGitSaveSettings').addEventListener('click', async () => {
-    const url = document.getElementById('gitRepoUrl').value.trim(), token = document.getElementById('gitToken').value.trim();
-    localStorage.setItem(GIT_URL_KEY, url); localStorage.setItem(GIT_TOKEN_KEY, token);
-    document.getElementById('gitSettingsModal').style.display = 'none'; showToast('Git settings saved');
-    try {
-      const files = await pfs.readdir(GIT_DIR);
-      if (!files.includes('.git')) { if (confirm('Clone this repository into the editor? Current files will be replaced.')) gitClone(); } else updateGitStatus();
-    } catch (e) { if (confirm('Clone this repository into the editor? Current files will be replaced.')) gitClone(); }
-  });
-  document.getElementById('btnGitCloseSettings').addEventListener('click', () => document.getElementById('gitSettingsModal').style.display = 'none');
-  document.getElementById('btnGitCommit').addEventListener('click', gitCommit);
-  document.getElementById('btnGitPush').addEventListener('click', gitPush);
-  document.getElementById('btnGitPull').addEventListener('click', gitPull);
-  document.getElementById('btnGitGraph').addEventListener('click', () => { renderGitGraph(); document.getElementById('gitGraphContainer').style.display = 'block'; });
-  document.getElementById('btnGitCloseGraph').addEventListener('click', () => document.getElementById('gitGraphContainer').style.display = 'none');
-  updateGitStatus();
 }
