@@ -5,23 +5,14 @@ export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Headers', '*');
   if (req.method === 'OPTIONS') return res.status(200).end();
   
-  // 2. Extract the target URL from the request path
-  // The client requests: /api/proxy/https://github.com/...
-  let path = req.url;
-  
-  // Vercel might pass just the path, or the full URL. We handle both.
-  if (path.startsWith('/api/proxy/')) {
-    path = path.substring('/api/proxy/'.length);
-  }
-  
-  // Ensure the target URL has a protocol
-  let targetUrl = path;
-  if (!targetUrl.startsWith('http')) {
-    targetUrl = 'https://' + targetUrl;
+  // 2. Get the target URL from the query parameter
+  const targetUrl = req.query.url;
+  if (!targetUrl) {
+    return res.status(400).json({ error: 'Missing url query parameter' });
   }
   
   try {
-    // 3. Fetch from GitHub with a valid User-Agent
+    // 3. Fetch from GitHub with the required User-Agent header
     const response = await fetch(targetUrl, {
       method: req.method,
       headers: {
