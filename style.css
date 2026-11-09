@@ -224,6 +224,11 @@ html[data-theme="light"] .tab.active{ color:#1e1e1e; }
   border-radius:50%;
   background:var(--dirty);
 }
+
+/* Special Preview Tab styling */
+.tab-preview { color: #38bdf8; }
+.tab-preview.active { color: #38bdf8; border-bottom-color: #38bdf8; }
+
 .tab-add{
   flex:0 0 auto;
   padding:10px 12px;
@@ -274,7 +279,7 @@ html[data-theme="light"] .findbar textarea{ background:#fff; color:#1e1e1e; bord
 .findbar textarea:focus{ border-color:var(--accent); }
 .count{ align-self:center; font-size:12px; color:#888; min-width:48px; text-align:center; }
 
-.panes{ flex:1; display:flex; flex-direction:column; min-height:0; }
+.panes{ flex:1; display:flex; flex-direction:column; min-height:0; position:relative; }
 .pane{ min-height:0; position:relative; }
 .editor-pane{ flex:1 1 auto; overflow:hidden; }
 #editor{ position:absolute; top:0; right:0; bottom:0; left:0; }
@@ -284,6 +289,17 @@ html[data-theme="light"] .findbar textarea{ background:#fff; color:#1e1e1e; bord
   border-top:1px solid var(--border); background:#fff;
 }
 .output-pane.show{ display:flex; }
+
+/* When Preview is in Tab mode, it fills the whole panes area */
+.panes.preview-tab-mode .editor-pane,
+.panes.preview-tab-mode .resizer {
+  display: none !important;
+}
+.panes.preview-tab-mode .output-pane {
+  flex: 1 1 100%;
+  border: none;
+}
+
 .output-pane.fullscreen{
   position:fixed; inset:0; z-index:1000;
   flex:1 1 auto; border:0;

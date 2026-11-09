@@ -363,7 +363,6 @@ function initEditor() {
 
   Object.values(models).forEach(m => window.__hookAutoRun && window.__hookAutoRun(m));
 
-  // Keyboard Shortcuts
   editor.addAction({ id: 'custom-open-find', label: 'Open Find Bar', keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyF], run: () => openFindBar() });
   editor.addAction({ id: 'custom-run-kb', label: 'Run preview', keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter], run: () => run() });
   editor.addAction({ id: 'custom-comment', label: 'Toggle line comment', keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.Slash], run: () => editor.trigger('', 'editor.action.commentLine') });
@@ -526,6 +525,15 @@ function renderTabs() {
     btn.className = 'tab' + (name === activeFile ? ' active' : ''); btn.dataset.file = name; btn.textContent = name;
     attachFileMenuHandlers(btn, name); nav.appendChild(btn);
   });
+  
+  // Add Preview Tab
+  const prevBtn = document.createElement('button');
+  prevBtn.className = 'tab tab-preview' + (activeFile === 'preview' ? ' active' : '');
+  prevBtn.dataset.file = 'preview';
+  prevBtn.innerHTML = '▶ Preview';
+  prevBtn.addEventListener('click', () => switchFile('preview'));
+  nav.appendChild(prevBtn);
+
   const addBtn = document.createElement('button'); addBtn.className = 'tab-add'; addBtn.title = 'New file'; addBtn.textContent = '+';
   addBtn.addEventListener('click', promptNewFile); nav.appendChild(addBtn);
   filesList.forEach(markDirtyState);
@@ -628,13 +636,45 @@ function wireSidebar() {
   document.getElementById('btnCloudLoad').addEventListener('click', loadFromCloud);
 }
 
+/* =========================================================
+   PREVIEW TAB SWITCHING LOGIC
+   ========================================================= */
 function switchFile(file) {
-  if (!models[file]) return; activeFile = file; editor.setModel(models[file]);
+  if (file !== 'preview' && !models[file]) return;
+  
+  activeFile = file;
+  
+  // Update Tabs UI
   document.querySelectorAll('.tab').forEach(b => b.classList.toggle('active', b.dataset.file === file));
   document.querySelectorAll('.side-item[data-file]').forEach(b => b.classList.toggle('active', b.dataset.file === file));
-  clearDecorations(); if (findbar.classList.contains('show')) refreshMatches(); updateStatusFile();
+  
+  const panes = document.getElementById('panes');
+  const outputPane = document.getElementById('outputPane');
+
+  if (file === 'preview') {
+    // Show Preview Tab Mode
+    panes.classList.add('preview-tab-mode');
+    outputPane.classList.add('show');
+    document.getElementById('editor').style.display = 'none';
+    document.getElementById('statusFile').textContent = 'Preview';
+    run();
+  } else {
+    // Show Editor Mode
+    panes.classList.remove('preview-tab-mode');
+    document.getElementById('editor').style.display = 'block';
+    if (!outputPane.classList.contains('fullscreen')) {
+      // Keep split view, but ensure editor is showing
+    }
+    editor.setModel(models[file]);
+    document.getElementById('statusFile').textContent = file;
+    clearDecorations(); 
+    if (findbar.classList.contains('show')) refreshMatches(); 
+  }
 }
 
+/* =========================================================
+   CLIPBOARD, FORMAT, ETC.
+   ========================================================= */
 function getSelectedText() { const sel = editor.getSelection(); if (!sel || sel.isEmpty()) return ''; return editor.getModel().getValueInRange(sel); }
 async function writeClipboardAsync(text) {
   try { if (navigator.clipboard && navigator.clipboard.writeText) { await navigator.clipboard.writeText(text); return true; } } catch (e) {}
@@ -807,11 +847,25 @@ function addConsoleLine(type, msg) {
 }
 window.addEventListener('message', e => { const d = e.data; if (!d || d.__preview !== true) return; addConsoleLine(d.type, d.msg); });
 
+/* =========================================================
+   PREVIEW CONTROLS (Close, Fullscreen, etc.)
+   ========================================================= */
 function wirePreviewControls() {
-  const outputPane = document.getElementById('outputPane'), btnFullscreen = document.getElementById('btnFullscreen'), btnOpen = document.getElementById('btnOpen'), btnAuto = document.getElementById('btnAuto');
+  const outputPane = document.getElementById('outputPane'), btnFullscreen = document.getElementById('btnFullscreen'), btnOpen = document.getElementById('btnOpen'), btnAuto = document.getElementById('btnAuto'), btnClose = document.getElementById('btnClosePreview');
+  
+  // NEW: Close Preview Button
+  btnClose.addEventListener('click', () => {
+    outputPane.classList.remove('show');
+    document.getElementById('panes').classList.remove('preview-tab-mode');
+    document.getElementById('editor').style.display = 'block';
+    // Switch to the first file if we are currently on the preview tab
+    if (activeFile === 'preview') switchFile(filesList[0]);
+  });
+
   function setFullscreen(on) { outputPane.classList.toggle('fullscreen', on); if (on) outputPane.classList.add('show'); btnFullscreen.classList.toggle('on', on); btnFullscreen.title = on ? 'Exit fullscreen' : 'Fullscreen preview'; }
   btnFullscreen.addEventListener('click', () => setFullscreen(!outputPane.classList.contains('fullscreen')));
   document.addEventListener('keydown', e => { if (e.key === 'Escape' && outputPane.classList.contains('fullscreen')) setFullscreen(false); });
+  
   btnOpen.addEventListener('click', () => {
     if (!editor) return; const blob = new Blob([buildDoc(models['index.html'] ? models['index.html'].getValue() : '', models['style.css'] ? models['style.css'].getValue() : '', models['script.js'] ? models['script.js'].getValue() : '')], { type: 'text/html' });
     const url = URL.createObjectURL(blob); const w = window.open(url, '_blank'); setTimeout(() => URL.revokeObjectURL(url), 60000); if (!w) alert('Popup blocked');
@@ -823,7 +877,7 @@ function wirePreviewControls() {
 }
 
 /* =========================================================
-   GIT — operations (Kept intact)
+   GIT — operations
    ========================================================= */
 async function ensureRepoDir() { if (!gitEnabled) return; try { await pfs.mkdir(GIT_DIR); } catch (e) {} }
 async function syncFilesToFS() {
