@@ -14,6 +14,9 @@
         <svg viewBox="0 0 24 24" width="18" height="18"><path d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none"/></svg>
       </button>
       <span class="title">IDEDITOR</span>
+      <button class="icon-btn" id="btnCmdPalette" title="Command Palette (Ctrl+Shift+P)" aria-label="Command Palette">
+        <svg viewBox="0 0 24 24" width="18" height="18"><path d="M8 9l3 3-3 3M13 15h4" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/><rect x="3" y="4" width="18" height="16" rx="2" stroke="currentColor" stroke-width="2" fill="none"/></svg>
+      </button>
       <button class="icon-btn" id="btnFind" title="Find (Ctrl+F)" aria-label="Find">
         <svg viewBox="0 0 24 24" width="18" height="18"><circle cx="11" cy="11" r="6" stroke="currentColor" stroke-width="2" fill="none"/><path d="M20 20l-4.2-4.2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
       </button>
@@ -30,6 +33,21 @@
         <div class="side-section">
           <div class="side-head">Files</div>
           <div class="side-list" id="sideFiles"></div>
+          <button class="side-item" id="btnImport" title="Import local files">
+            <svg viewBox="0 0 24 24" width="15" height="15"><path d="M12 3v12m0 0l-4-4m4 4l4-4M5 21h14" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <span>Import Files</span>
+          </button>
+          <input type="file" id="fileImport" multiple accept=".html,.htm,.css,.js,.mjs,.jsx,.ts,.tsx,.json,.md,.txt,.xml,.svg" style="display:none;">
+        </div>
+
+        <div class="side-section">
+          <div class="side-head">Firebase Cloud</div>
+          <div class="git-status" id="firebaseStatus">Connecting…</div>
+          <div class="git-buttons">
+            <button class="icon-btn sm" id="btnFirebaseLogin" title="Login">Login</button>
+            <button class="icon-btn sm" id="btnCloudSave" title="Save to Cloud">Save</button>
+            <button class="icon-btn sm" id="btnCloudLoad" title="Load from Cloud">Load</button>
+          </div>
         </div>
 
         <div class="side-section">
@@ -84,6 +102,9 @@
             <button class="icon-btn" id="btnFormat" title="Format current file" aria-label="Format current file">
               <svg viewBox="0 0 24 24" width="18" height="18"><path d="M4 7h16M4 12h10M4 17h16" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/></svg>
             </button>
+            <button class="icon-btn" id="btnMinimap" title="Toggle minimap" aria-label="Toggle minimap">
+              <svg viewBox="0 0 24 24" width="18" height="18"><rect x="3" y="3" width="18" height="18" rx="2" stroke="currentColor" stroke-width="2" fill="none"/><path d="M15 3v18M18 6h1M18 10h1M18 14h1" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round"/></svg>
+            </button>
           </div>
         </div>
 
@@ -134,8 +155,9 @@
           </button>
         </div>
 
-        <div class="panes">
-          <div class="pane editor-pane"><div id="editor"></div></div>
+        <div class="panes" id="panes">
+          <div class="pane editor-pane" id="editorPane"><div id="editor"></div></div>
+          <div class="resizer" id="resizer"></div>
           <div class="pane output-pane" id="outputPane">
             <div class="output-head">
               <span class="output-title">Preview</span>
@@ -200,7 +222,6 @@
     </div>
   </div>
 
-  <!-- Git Settings Modal -->
   <div id="gitSettingsModal" class="modal" style="display:none;">
     <div class="modal-content">
       <h3>Git Settings</h3>
@@ -214,7 +235,6 @@
     </div>
   </div>
 
-  <!-- Git Graph -->
   <div id="gitGraphContainer" style="display:none; position:fixed; inset:0; background:var(--bg); z-index:2000; padding:20px; overflow:auto;">
     <button class="btn" id="btnGitCloseGraph" style="margin-bottom:10px;">Close Graph</button>
     <svg id="gitGraphSvg" xmlns="http://www.w3.org/2000/svg"></svg>
@@ -224,3 +244,4 @@
   <script src="https://cdn.jsdelivr.net/npm/lz-string@1.5.0/libs/lz-string.min.js"></script>
   <script src="script.js"></script>
 </body>
+</html>

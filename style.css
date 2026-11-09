@@ -135,9 +135,10 @@ html[data-theme="light"] .side-item.active{
   aspect-ratio:auto; 
 }
 
-/* Git panel */
+/* Git & Firebase panel */
 .git-status{
   font-size:11.5px; color:#888; padding:4px 8px;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
 }
 .git-input{
   width:calc(100% - 8px); margin:0 4px 6px;
@@ -150,7 +151,7 @@ html[data-theme="light"] .git-input{ background:#fff; color:#1e1e1e; }
 .git-input:focus{ border-color:var(--accent); }
 .git-buttons{
   display:grid; 
-  grid-template-columns:repeat(4, 1fr); 
+  grid-template-columns:repeat(3, 1fr); 
   gap:4px; 
   padding:0 4px;
 }
@@ -159,9 +160,12 @@ html[data-theme="light"] .git-input{ background:#fff; color:#1e1e1e; }
   height:30px; 
   padding:0 2px; 
   font-size:10px; 
+  display:flex;
+  align-items:center;
+  justify-content:center;
 }
 .git-buttons #btnGitSettings {
-  grid-column: span 4;
+  grid-column: span 3;
 }
 
 /* Modal */
@@ -370,6 +374,35 @@ html[data-theme="light"] .m-act:active{ background:#d0d0d0; }
 .match-all{ background:rgba(255,200,0,.32); border-radius:2px; }
 .match-current{ background:rgba(255,140,0,.85); color:#111 !important; border-radius:2px; }
 
+/* Split pane resizer */
+.resizer {
+  position: relative;
+  flex-shrink: 0;
+  z-index: 10;
+  background: var(--border);
+  transition: background 0.15s;
+  touch-action: none;
+}
+.resizer::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: #666;
+  border-radius: 4px;
+}
+
+@media (min-width: 900px) {
+  .resizer { display: block; width: 6px; cursor: col-resize; }
+  .resizer::before { width: 2px; height: 24px; }
+}
+@media (max-width: 899px) {
+  .resizer { display: block; height: 12px; width: 100%; cursor: row-resize; }
+  .resizer::before { width: 32px; height: 4px; }
+}
+.resizer:hover, .resizer.active { background: var(--accent); }
+
 @media (min-width:900px){
   .panes{ flex-direction:row; }
   .editor-pane{ flex:1 1 50%; }
@@ -409,3 +442,4 @@ html[data-theme="light"] .m-act:active{ background:#d0d0d0; }
   .console{ max-height:35%; font-size:11.5px; }
   .output-pane{ flex:0 0 50%; }
   .output-head, .console-head{ font-size:11.5px; }
+}
