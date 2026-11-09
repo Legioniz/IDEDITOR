@@ -59,22 +59,34 @@ const firebaseConfig = {
 
 let fbAuth = null, fbDb = null, fbUser = null;
 let firebaseEnabled = false;
+let authModule = null; // BUG FIX 1: Store module globally
 
 async function initFirebase() {
   try {
     const { initializeApp } = await import('https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js');
-    const { getAuth, onAuthStateChanged, signInWithPopup, GoogleAuthProvider, signOut } = await import('https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js');
+    authModule = await import('https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js');
     const { getFirestore, doc, setDoc, getDoc } = await import('https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js');
-
+    
+    const { getAuth, onAuthStateChanged, getRedirectResult } = authModule;
+    
     const app = initializeApp(firebaseConfig);
     fbAuth = getAuth(app);
     fbDb = getFirestore(app);
-
+    
     const loggedOutUI = document.getElementById('firebaseLoggedOut');
     const loggedInUI = document.getElementById('firebaseLoggedIn');
     const avatarEl = document.getElementById('userAvatar');
     const nameEl = document.getElementById('userName');
-
+    
+    getRedirectResult(fbAuth).then((result) => {
+      if (result && result.user) {
+        showToast('Logged in as ' + result.user.displayName);
+      }
+    }).catch((error) => {
+      console.error('Redirect login error:', error);
+      showToast('Login failed: ' + error.message);
+    });
+    
     onAuthStateChanged(fbAuth, (user) => {
       fbUser = user;
       
@@ -94,9 +106,6 @@ async function initFirebase() {
       }
     });
     
-    document.getElementById('btnFirebaseLogin').addEventListener('click', () => signInWithPopup(fbAuth, new GoogleAuthProvider()));
-    document.getElementById('btnFirebaseLogout').addEventListener('click', () => signOut(fbAuth));
-
     firebaseEnabled = true;
   } catch (e) {
     console.warn('Firebase failed to load', e);
@@ -561,8 +570,21 @@ function renderTabs() {
   filesList.forEach(markDirtyState);
 }
 
+let foldersInitialized = false; // BUG FIX 2: Track folder initialization
 const expandedFolders = new Set();
 function renderSidebarFiles() {
+  if (!foldersInitialized && filesList.length > 0) {
+    filesList.forEach(f => {
+      const parts = f.split('/');
+      let currentPath = '';
+      for (let i = 0; i < parts.length - 1; i++) {
+        currentPath = currentPath ? `${currentPath}/${parts[i]}` : parts[i];
+        expandedFolders.add(currentPath);
+      }
+    });
+    foldersInitialized = true;
+  }
+
   const list = document.getElementById('sideFiles'); list.innerHTML = '';
   const tree = {};
   filesList.forEach(path => {
@@ -594,9 +616,8 @@ function renderSidebarFiles() {
         container.appendChild(btn);
       } else {
         const folderDiv = document.createElement('div');
-        const isExpanded = expandedFolders.has(fullPath) || expandedFolders.size === 0;
-        if (isExpanded) expandedFolders.add(fullPath);
-
+        const isExpanded = expandedFolders.has(fullPath);
+        
         const folderHeader = document.createElement('div');
         folderHeader.className = 'tree-folder' + (isExpanded ? '' : ' collapsed');
         folderHeader.innerHTML = `<svg viewBox="0 0 24 24" width="14" height="14"><path d="M9 18l6-6-6-6" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg><span>${escapeHtml(key)}</span>`;
@@ -759,6 +780,17 @@ function wireSidebar() {
   
   document.getElementById('btnCloudSave').addEventListener('click', saveToCloud);
   document.getElementById('btnCloudLoad').addEventListener('click', loadFromCloud);
+
+  // BUG FIX 1: Safely bound Firebase buttons
+  document.getElementById('btnFirebaseLogin').addEventListener('click', () => {
+    if (!firebaseEnabled || !authModule) return showToast('Firebase is still loading...');
+    const provider = new authModule.GoogleAuthProvider();
+    if (isMobile()) authModule.signInWithRedirect(fbAuth, provider);
+    else authModule.signInWithPopup(fbAuth, provider);
+  });
+  document.getElementById('btnFirebaseLogout').addEventListener('click', () => {
+    if (firebaseEnabled && authModule) authModule.signOut(fbAuth);
+  });
 }
 
 /* =========================================================
@@ -1151,9 +1183,12 @@ async function handleGitCommand(args) {
     termOutput.appendChild(loader);
     termOutput.scrollTop = termOutput.scrollHeight;
 
-    await gitClone();
-    
-    if (loader.parentNode) loader.parentNode.removeChild(loader);
+    // BUG FIX 3: Ensure loader is removed on error
+    try {
+      await gitClone();
+    } finally {
+      if (loader.parentNode) loader.parentNode.removeChild(loader);
+    }
   }
   else {
     addTermLine('Unknown git command', 'error');
