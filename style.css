@@ -21,6 +21,7 @@ html,body{
 }
 .app{ display:flex; flex-direction:column; height:100vh; height:100dvh; }
 
+/* Top Bar */
 .bar{
   display:flex; align-items:center; gap:var(--gap);
   padding:8px 10px; padding-top:calc(8px + env(safe-area-inset-top));
@@ -61,6 +62,7 @@ html[data-theme="light"] .icon-btn:active{ background:#d0d0d0; }
 html[data-theme="light"] .btn{ color:#1e1e1e; background:#e8e8e8; }
 html[data-theme="light"] .btn:active{ background:#d4d4d4; }
 
+/* Body */
 .body{ flex:1; display:flex; min-height:0; position:relative; }
 
 .sidebar-backdrop{
@@ -73,6 +75,7 @@ html[data-theme="light"] .btn:active{ background:#d4d4d4; }
 }
 .sidebar-backdrop.show{ display:block; opacity:1; }
 
+/* Sidebar */
 .sidebar{
   width:var(--sidebar-w); flex:0 0 auto;
   background:var(--panel); border-right:1px solid var(--border);
@@ -147,7 +150,7 @@ html[data-theme="light"] .side-item.active{
   aspect-ratio:auto; 
 }
 
-/* Git & Firebase panel */
+/* Git & Firebase */
 .git-status{
   font-size:11.5px; color:#888; padding:4px 8px;
   white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
@@ -178,6 +181,7 @@ html[data-theme="light"] .git-input{ background:#fff; color:#1e1e1e; }
 }
 .git-buttons #btnGitSettings { grid-column: span 3; }
 
+/* Modal */
 .modal{
   position:fixed; inset:0;
   background:rgba(0,0,0,.7);
@@ -199,6 +203,7 @@ html[data-theme="light"] .git-input{ background:#fff; color:#1e1e1e; }
 
 .main{ flex:1; display:flex; flex-direction:column; min-width:0; min-height:0; }
 
+/* Tabs */
 .tabs{
   display:flex; gap:2px; overflow-x:auto;
   background:var(--panel); border-bottom:1px solid var(--border);
@@ -260,6 +265,7 @@ html[data-theme="light"] .tab-add:hover{ color:#1e1e1e; }
 html[data-theme="light"] .tab-menu .menu-item:hover{ background:rgba(0,0,0,.06); }
 .tab-menu .menu-item[data-act="delete"]{ color:var(--dirty); }
 
+/* Find Bar */
 .findbar{
   display:none; flex-wrap:wrap; align-items:flex-start; gap:6px; padding:8px;
   background:#2d2d2d; border-bottom:1px solid var(--border);
@@ -279,6 +285,7 @@ html[data-theme="light"] .findbar textarea{ background:#fff; color:#1e1e1e; bord
 .findbar textarea:focus{ border-color:var(--accent); }
 .count{ align-self:center; font-size:12px; color:#888; min-width:48px; text-align:center; }
 
+/* Panes */
 .panes{ flex:1; display:flex; flex-direction:column; min-height:0; position:relative; }
 .pane{ min-height:0; position:relative; }
 .editor-pane{ flex:1 1 auto; overflow:hidden; }
@@ -314,31 +321,20 @@ html[data-theme="light"] .findbar textarea{ background:#fff; color:#1e1e1e; bord
 .output-actions .icon-btn{ flex:0 0 auto; }
 #preview{ flex:1; width:100%; min-height:0; border:0; background:#fff; }
 
+/* Console & Terminal */
 .console-head{
   display:flex; align-items:center; justify-content:space-between;
-  padding:4px 8px;
-  background:var(--panel); border-top:1px solid var(--border);
-  border-bottom:1px solid var(--border);
+  padding:4px 8px; background:var(--panel); border-top:1px solid var(--border); border-bottom:1px solid var(--border);
 }
-.console-toggle{
-  display:flex; align-items:center; gap:6px;
-  background:transparent; border:0; padding:2px 4px;
-  color:#999; font-size:12px; font-weight:600; letter-spacing:.3px;
-  cursor:pointer; font-family:inherit;
-  touch-action:manipulation;
-  -webkit-user-select:none; user-select:none;
+.panel-tabs { display:flex; gap:4px; }
+.panel-tab {
+  background:transparent; border:0; color:#888; font-size:11.5px; font-weight:600;
+  padding:4px 8px; cursor:pointer; border-radius:4px; font-family:inherit;
 }
-.console-toggle:hover{ color:#ddd; }
-.console-toggle svg{ transition:transform .15s; }
-html[data-theme="light"] .console-toggle{ color:#666; }
-html[data-theme="light"] .console-toggle:hover{ color:#333; }
-.console-head.collapsed .console-toggle svg{ transform:rotate(-90deg); }
-.console.collapsed{ display:none !important; }
-.console-head.has-new .console-toggle::after{
-  content:''; display:inline-block;
-  width:6px; height:6px; border-radius:50%;
-  background:var(--dirty); margin-left:2px;
-}
+.panel-tab:hover { color:#ddd; }
+html[data-theme="light"] .panel-tab:hover { color:#333; }
+.panel-tab.active { background:rgba(255,255,255,0.1); color:#fff; }
+html[data-theme="light"] .panel-tab.active { background:rgba(0,0,0,0.08); color:#1e1e1e; }
 .console-actions{ display:flex; gap:4px; }
 
 .console{
@@ -354,6 +350,36 @@ html[data-theme="light"] .console-toggle:hover{ color:#333; }
 .cl-info{ color:#8ec9ff; }
 .cl-warn{ color:#ffcc66; }
 .cl-error{ color:#ff7b72; }
+
+/* Terminal */
+.terminal {
+  display: flex; flex-direction: column; flex: 1; max-height: 40%;
+  background: #111;
+  font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px;
+  overflow: hidden;
+}
+.term-output {
+  flex: 1; overflow-y: auto; padding: 6px 8px;
+  color: #ccc; line-height: 1.5; white-space: pre-wrap; word-break: break-all;
+}
+.term-line { display: flex; gap: 8px; margin-bottom: 2px; }
+.term-error { color: #ff7b72; }
+.term-success { color: #8ec9ff; }
+.term-info { color: #ffcc66; }
+
+.term-input-wrap {
+  display: flex; align-items: center; gap: 6px;
+  padding: 4px 8px 8px; background: #111;
+}
+.term-prompt { color: #0a84ff; font-weight: 700; }
+#termInput {
+  flex: 1; background: transparent; border: 0; color: #fff;
+  font-family: inherit; font-size: 13px; outline: none; padding: 0;
+}
+@media (max-width: 899px) {
+  .terminal { max-height: 35%; font-size: 11.5px; }
+  #termInput { font-size: 16px; /* iOS zoom fix */ }
+}
 
 .mobile-actions{
   display:none;

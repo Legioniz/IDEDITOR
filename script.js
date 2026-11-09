@@ -82,6 +82,7 @@ async function initFirebase() {
           btnLogin.onclick = () => signOut(fbAuth);
         }
         showToast('Firebase Connected');
+        addTermLine('Firebase Connected as ' + user.email, 'success');
       } else {
         if (statusEl) statusEl.textContent = 'Not logged in';
         if (btnLogin) {
@@ -96,6 +97,7 @@ async function initFirebase() {
     console.warn('Firebase failed to load', e);
     const statusEl = document.getElementById('firebaseStatus');
     if (statusEl) statusEl.textContent = 'Firebase error';
+    addTermLine('Firebase failed to load', 'error');
   }
 }
 
@@ -103,6 +105,7 @@ async function saveToCloud() {
   if (!firebaseEnabled || !fbUser) return showToast('Login to save to cloud');
   try {
     showToast('Saving to cloud...');
+    addTermLine('Saving to cloud...', 'info');
     const { doc, setDoc } = await import('https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js');
     
     const data = {};
@@ -113,9 +116,11 @@ async function saveToCloud() {
       updatedAt: new Date().toISOString()
     });
     showToast('Saved to cloud!');
+    addTermLine('Saved to cloud!', 'success');
   } catch (e) {
     console.error(e);
     showToast('Cloud save failed');
+    addTermLine('Cloud save failed: ' + e.message, 'error');
   }
 }
 
@@ -123,10 +128,15 @@ async function loadFromCloud() {
   if (!firebaseEnabled || !fbUser) return showToast('Login to load from cloud');
   try {
     showToast('Loading from cloud...');
+    addTermLine('Loading from cloud...', 'info');
     const { doc, getDoc } = await import('https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js');
     
     const docSnap = await getDoc(doc(fbDb, 'users', fbUser.uid, 'projects', 'main'));
-    if (!docSnap.exists()) return showToast('No cloud project found');
+    if (!docSnap.exists()) {
+      showToast('No cloud project found');
+      addTermLine('No cloud project found', 'error');
+      return;
+    }
     
     const cloudFiles = docSnap.data().files;
     
@@ -146,9 +156,11 @@ async function loadFromCloud() {
     
     renderTabs(); renderSidebarFiles(); switchFile(activeFile); saveNow();
     showToast('Loaded from cloud!');
+    addTermLine('Loaded from cloud!', 'success');
   } catch (e) {
     console.error(e);
     showToast('Cloud load failed');
+    addTermLine('Cloud load failed: ' + e.message, 'error');
   }
 }
 
@@ -419,7 +431,7 @@ function wireTier1Features() {
     if (!files.length) return;
     let firstImported = null;
     for (const file of files) {
-      const name = file.name; // Note: full paths require webkitdirectory, but we keep it simple here
+      const name = file.name;
       if (FILES[name] && !confirm(`File "${name}" already exists. Overwrite?`)) continue;
       if (models[name]) { models[name].dispose(); delete models[name]; }
       const content = await file.text();
@@ -546,15 +558,9 @@ function renderTabs() {
   filesList.forEach(markDirtyState);
 }
 
-/* =========================================================
-   FILE TREE RENDERING
-   ========================================================= */
 const expandedFolders = new Set();
-
 function renderSidebarFiles() {
   const list = document.getElementById('sideFiles'); list.innerHTML = '';
-  
-  // Build tree structure
   const tree = {};
   filesList.forEach(path => {
     const parts = path.split('/');
@@ -566,7 +572,6 @@ function renderSidebarFiles() {
   });
 
   function buildNode(node, path, container) {
-    // Sort keys: folders first, then files
     const keys = Object.keys(node).sort((a, b) => {
       const aIsFile = node[a] === 'FILE';
       const bIsFile = node[b] === 'FILE';
@@ -578,7 +583,6 @@ function renderSidebarFiles() {
     keys.forEach(key => {
       const fullPath = path ? `${path}/${key}` : key;
       if (node[key] === 'FILE') {
-        // Render File
         const btn = document.createElement('button');
         btn.className = 'side-item' + (fullPath === activeFile ? ' active' : ''); 
         btn.dataset.file = fullPath;
@@ -586,9 +590,8 @@ function renderSidebarFiles() {
         attachFileMenuHandlers(btn, fullPath, () => { switchFile(fullPath); if (isMobile()) closeSidebar(); });
         container.appendChild(btn);
       } else {
-        // Render Folder
         const folderDiv = document.createElement('div');
-        const isExpanded = expandedFolders.has(fullPath) || expandedFolders.size === 0; // Expand all by default on first load
+        const isExpanded = expandedFolders.has(fullPath) || expandedFolders.size === 0;
         if (isExpanded) expandedFolders.add(fullPath);
 
         const folderHeader = document.createElement('div');
@@ -676,7 +679,6 @@ function promptNewFolder() {
   let folder = raw.trim().replace(/^\/+/, '').replace(/[\\:*?"<>|\x00-\x1F]/g, ''); 
   if (!folder) return showToast('Invalid name');
   
-  // Create a placeholder file so the folder exists
   const placeholder = `${folder}/.gitkeep`;
   if (FILES[placeholder]) return showToast('Folder already exists');
   
@@ -684,7 +686,6 @@ function promptNewFolder() {
   filesList.push(placeholder); 
   ensureModel(placeholder);
   
-  // Auto-expand the new folder
   const parts = folder.split('/');
   let currentPath = '';
   parts.forEach(p => { currentPath = currentPath ? `${currentPath}/${p}` : p; expandedFolders.add(currentPath); });
@@ -928,18 +929,215 @@ function replaceAll() {
 }
 
 function wireRun() { document.getElementById('btnRun').addEventListener('click', run); }
-function wireConsole() {
-  const head = document.getElementById('consoleHead'), toggleBtn = document.getElementById('btnConsoleToggle'), copyBtn = document.getElementById('btnCopyConsole'), clearBtn = document.getElementById('btnClearConsole');
-  function toggle() { const collapsed = consoleEl.classList.toggle('collapsed'); head.classList.toggle('collapsed', collapsed); if (!collapsed) head.classList.remove('has-new'); }
-  toggleBtn.addEventListener('click', toggle);
-  copyBtn.addEventListener('click', async () => { const text = Array.from(consoleEl.children).map(el => el.textContent).join('\n'); if (!text.trim()) return showToast('Console empty'); showToast(await writeClipboardAsync(text) ? 'Log copied' : 'Copy failed'); });
-  clearBtn.addEventListener('click', clearConsole);
-}
-function run() {
-  if (!editor) return; clearConsole(); document.getElementById('outputPane').classList.add('show');
-  document.getElementById('preview').srcdoc = buildDoc(models['index.html'] ? models['index.html'].getValue() : '', models['style.css'] ? models['style.css'].getValue() : '', models['script.js'] ? models['script.js'].getValue() : '');
-}
+
+/* =========================================================
+   CONSOLE & TERMINAL
+   ========================================================= */
 const consoleEl = document.getElementById('console');
+const termEl = document.getElementById('terminal');
+const termOutput = document.getElementById('termOutput');
+const termInput = document.getElementById('termInput');
+let activePanel = 'console'; // 'console' or 'terminal'
+
+function setActivePanel(panel) {
+  activePanel = panel;
+  document.getElementById('btnTabConsole').classList.toggle('active', panel === 'console');
+  document.getElementById('btnTabTerminal').classList.toggle('active', panel === 'terminal');
+  
+  if (panel === 'console') {
+    consoleEl.style.display = consoleEl.classList.contains('show') ? 'block' : 'none';
+    termEl.style.display = 'none';
+  } else {
+    consoleEl.style.display = 'none';
+    termEl.style.display = 'flex';
+    termInput.focus();
+  }
+}
+
+function wireConsole() {
+  document.getElementById('btnTabConsole').addEventListener('click', () => setActivePanel('console'));
+  document.getElementById('btnTabTerminal').addEventListener('click', () => setActivePanel('terminal'));
+
+  document.getElementById('btnCopyPanel').addEventListener('click', async () => {
+    const text = activePanel === 'console' 
+      ? Array.from(consoleEl.children).map(el => el.textContent).join('\n')
+      : termOutput.textContent;
+    if (!text.trim()) return showToast('Empty');
+    showToast(await writeClipboardAsync(text) ? 'Copied' : 'Copy failed');
+  });
+
+  document.getElementById('btnClearPanel').addEventListener('click', () => {
+    if (activePanel === 'console') clearConsole();
+    else termOutput.innerHTML = '';
+  });
+
+  termInput.addEventListener('keydown', e => {
+    if (e.key === 'Enter') {
+      const cmd = termInput.value.trim();
+      termInput.value = '';
+      if (cmd) executeCommand(cmd);
+    }
+  });
+
+  termOutput.innerHTML = `<div class="term-line term-success">Welcome to IDEDITOR Terminal.</div><div class="term-line">Type <span class="term-success">help</span> for a list of commands.</div><br>`;
+}
+
+function addTermLine(msg, type = '') {
+  const div = document.createElement('div');
+  div.className = 'term-line' + (type ? ' term-' + type : '');
+  div.textContent = msg;
+  termOutput.appendChild(div);
+  termOutput.scrollTop = termOutput.scrollHeight;
+}
+
+async function executeCommand(raw) {
+  addTermLine(`$ ${raw}`);
+  const args = raw.split(/\s+/);
+  const cmd = args[0].toLowerCase();
+  
+  switch (cmd) {
+    case 'help':
+      addTermLine('Available commands:', 'info');
+      addTermLine('  clear                - Clear terminal');
+      addTermLine('  ls                   - List all files');
+      addTermLine('  cat <file>           - Print file contents');
+      addTermLine('  touch <file>         - Create a new file');
+      addTermLine('  mkdir <folder>       - Create a new folder');
+      addTermLine('  run                  - Run preview');
+      addTermLine('  format               - Format current file');
+      addTermLine('  git status           - Check git status');
+      addTermLine('  git commit -m "msg"  - Commit changes');
+      addTermLine('  git push             - Push to remote');
+      addTermLine('  git pull             - Pull from remote');
+      addTermLine('  git clone <url>      - Clone a repository');
+      addTermLine('  firebase save        - Save to Firebase');
+      addTermLine('  firebase load        - Load from Firebase');
+      addTermLine('  theme <dark|light>   - Switch theme');
+      break;
+
+    case 'clear':
+      termOutput.innerHTML = '';
+      break;
+
+    case 'ls':
+      addTermLine(filesList.join('    '));
+      break;
+
+    case 'cat':
+      if (!args[1]) return addTermLine('Usage: cat <file>', 'error');
+      if (!models[args[1]]) return addTermLine(`File not found: ${args[1]}`, 'error');
+      addTermLine(models[args[1]].getValue());
+      break;
+
+    case 'touch':
+      if (!args[1]) return addTermLine('Usage: touch <file>', 'error');
+      if (FILES[args[1]]) return addTermLine('File already exists', 'error');
+      FILES[args[1]] = { lang: langFromFilename(args[1]), content: '' };
+      filesList.push(args[1]);
+      ensureModel(args[1]);
+      renderTabs(); renderSidebarFiles(); saveNow();
+      addTermLine(`Created file: ${args[1]}`, 'success');
+      break;
+
+    case 'mkdir':
+      if (!args[1]) return addTermLine('Usage: mkdir <folder>', 'error');
+      const folder = args[1];
+      const placeholder = `${folder}/.gitkeep`;
+      if (FILES[placeholder]) return addTermLine('Folder already exists', 'error');
+      FILES[placeholder] = { lang: 'plaintext', content: '' };
+      filesList.push(placeholder);
+      ensureModel(placeholder);
+      renderTabs(); renderSidebarFiles(); saveNow();
+      addTermLine(`Created folder: ${folder}`, 'success');
+      break;
+
+    case 'run':
+      run();
+      addTermLine('Preview triggered', 'success');
+      break;
+
+    case 'format':
+      addTermLine('Formatting current file...', 'info');
+      await formatCurrent();
+      break;
+
+    case 'theme':
+      if (args[1] === 'dark' || args[1] === 'light') {
+        setTheme(args[1]);
+        addTermLine(`Theme set to ${args[1]}`, 'success');
+      } else {
+        addTermLine('Usage: theme <dark|light>', 'error');
+      }
+      break;
+
+    case 'git':
+      handleGitCommand(args);
+      break;
+
+    case 'firebase':
+      handleFirebaseCommand(args);
+      break;
+
+    default:
+      addTermLine(`Command not found: ${cmd}`, 'error');
+  }
+}
+
+async function handleGitCommand(args) {
+  const sub = args[1];
+  if (!gitEnabled) return addTermLine('Git is not loaded yet.', 'error');
+
+  if (sub === 'status') {
+    addTermLine('Checking status...', 'info');
+    try {
+      const matrix = await git.statusMatrix({ fs: gitFs, dir: GIT_DIR });
+      const changed = matrix.filter(([, head, workdir, stage]) => head !== workdir || head !== stage);
+      if (changed.length === 0) addTermLine('Clean', 'success');
+      else addTermLine(`${changed.length} change(s)`, 'info');
+    } catch (e) { addTermLine('Error: ' + e.message, 'error'); }
+  } 
+  else if (sub === 'commit') {
+    // Parse `git commit -m "message"`
+    const msgIndex = args.indexOf('-m');
+    if (msgIndex === -1 || !args[msgIndex + 1]) return addTermLine('Usage: git commit -m "message"', 'error');
+    const msg = args.slice(msgIndex + 1).join(' ').replace(/^["']|["']$/g, '');
+    document.getElementById('gitMessage').value = msg;
+    addTermLine(`Committing: "${msg}"...`, 'info');
+    await gitCommit();
+  }
+  else if (sub === 'push') {
+    addTermLine('Pushing...', 'info');
+    await gitPush();
+  }
+  else if (sub === 'pull') {
+    addTermLine('Pulling...', 'info');
+    await gitPull();
+  }
+  else if (sub === 'clone') {
+    if (!args[2]) return addTermLine('Usage: git clone <url>', 'error');
+    document.getElementById('gitRepoUrl').value = args[2];
+    addTermLine(`Cloning: ${args[2]}...`, 'info');
+    await gitClone();
+  }
+  else {
+    addTermLine('Unknown git command', 'error');
+  }
+}
+
+async function handleFirebaseCommand(args) {
+  const sub = args[1];
+  if (!firebaseEnabled) return addTermLine('Firebase not loaded', 'error');
+  if (!fbUser) return addTermLine('Not logged in. Click Login in the sidebar.', 'error');
+
+  if (sub === 'save') {
+    await saveToCloud();
+  } else if (sub === 'load') {
+    await loadFromCloud();
+  } else {
+    addTermLine('Unknown firebase command', 'error');
+  }
+}
+
 function clearConsole() { if (!consoleEl) return; consoleEl.innerHTML = ''; consoleEl.classList.remove('show'); const head = document.getElementById('consoleHead'); if (head) head.classList.remove('has-new'); }
 function addConsoleLine(type, msg) {
   if (!consoleEl) return; const row = document.createElement('div'); row.className = 'cl cl-' + type;
@@ -953,6 +1151,11 @@ function addConsoleLine(type, msg) {
   consoleEl.scrollTop = consoleEl.scrollHeight;
 }
 window.addEventListener('message', e => { const d = e.data; if (!d || d.__preview !== true) return; addConsoleLine(d.type, d.msg); });
+
+function run() {
+  if (!editor) return; clearConsole(); document.getElementById('outputPane').classList.add('show');
+  document.getElementById('preview').srcdoc = buildDoc(models['index.html'] ? models['index.html'].getValue() : '', models['style.css'] ? models['style.css'].getValue() : '', models['script.js'] ? models['script.js'].getValue() : '');
+}
 
 function wirePreviewControls() {
   const outputPane = document.getElementById('outputPane'), btnFullscreen = document.getElementById('btnFullscreen'), btnOpen = document.getElementById('btnOpen'), btnAuto = document.getElementById('btnAuto'), btnClose = document.getElementById('btnClosePreview');
@@ -989,14 +1192,12 @@ async function syncFilesToFS() {
     const content = models[name] ? models[name].getValue() : ''; 
     const dir = name.substring(0, name.lastIndexOf('/'));
     if (dir) {
-      // Create directories recursively if they don't exist
       await pfs.mkdir(`${GIT_DIR}/${dir}`, { recursive: true });
     }
     await pfs.writeFile(`${GIT_DIR}/${name}`, content, 'utf8'); 
   }
 }
 
-// Recursive helper to read nested files from LightningFS
 async function walkDir(dir, base = '') {
   let files = [];
   try {
@@ -1051,13 +1252,13 @@ async function gitCommit() {
   try {
     await ensureRepoDir(); try { await pfs.readdir(`${GIT_DIR}/.git`); } catch (e) { await git.init({ fs: gitFs, dir: GIT_DIR }); }
     await syncFilesToFS();
-    // Use a recursive add for all files
     for (const name of filesList) { 
       try { await git.add({ fs: gitFs, dir: GIT_DIR, filepath: name }); } catch (e) { console.warn('Add error:', name, e); } 
     }
     await git.commit({ fs: gitFs, dir: GIT_DIR, message: msg, author: { name: 'IDEDITOR', email: 'editor@example.com' } });
     document.getElementById('gitMessage').value = ''; showToast('Committed'); updateGitStatus();
-  } catch (e) { console.error(e); showToast('Commit failed: ' + (e && e.message ? e.message : e)); }
+    addTermLine('Commit successful', 'success');
+  } catch (e) { console.error(e); showToast('Commit failed: ' + (e && e.message ? e.message : e)); addTermLine('Commit failed: ' + e.message, 'error'); }
 }
 
 async function gitPush() {
@@ -1067,7 +1268,8 @@ async function gitPush() {
     await syncFilesToFS();
     await git.push({ fs: gitFs, http, dir: GIT_DIR, corsProxy: CORS_PROXY, url, onAuth: () => ({ username: 'x-access-token', password: token }) });
     showToast('Pushed'); updateGitStatus();
-  } catch (e) { console.error(e); showToast('Push failed: ' + (e && e.message ? e.message : e)); }
+    addTermLine('Push successful', 'success');
+  } catch (e) { console.error(e); showToast('Push failed: ' + (e && e.message ? e.message : e)); addTermLine('Push failed: ' + e.message, 'error'); }
 }
 
 async function gitPull() {
@@ -1077,7 +1279,8 @@ async function gitPull() {
   try {
     await git.pull({ fs: gitFs, http, dir: GIT_DIR, corsProxy: CORS_PROXY, url, singleBranch: true, author: { name: 'IDEDITOR', email: 'editor@example.com' }, onAuth: () => ({ username: 'x-access-token', password: token }) });
     await syncFSToEditor(); showToast('Pulled'); updateGitStatus();
-  } catch (e) { console.error(e); showToast('Pull failed: ' + (e && e.message ? e.message : e)); }
+    addTermLine('Pull successful', 'success');
+  } catch (e) { console.error(e); showToast('Pull failed: ' + (e && e.message ? e.message : e)); addTermLine('Pull failed: ' + e.message, 'error'); }
 }
 
 async function gitClone() {
@@ -1087,7 +1290,8 @@ async function gitClone() {
     try { await pfs.rmdir(GIT_DIR, { recursive: true }); } catch (e) {}
     await git.clone({ fs: gitFs, http, dir: GIT_DIR, corsProxy: CORS_PROXY, url, singleBranch: true, depth: 10, onAuth: () => ({ username: 'x-access-token', password: token }) });
     await syncFSToEditor(); showToast('Cloned'); updateGitStatus();
-  } catch (e) { console.error(e); showToast('Clone failed: ' + (e && e.message ? e.message : e)); }
+    addTermLine('Clone successful', 'success');
+  } catch (e) { console.error(e); showToast('Clone failed: ' + (e && e.message ? e.message : e)); addTermLine('Clone failed: ' + e.message, 'error'); }
 }
 
 async function renderGitGraph() {
