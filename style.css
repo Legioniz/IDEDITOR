@@ -161,6 +161,24 @@ html[data-theme="light"] .side-item.active{
   margin-top:auto;
   padding-top:8px;
   border-top:1px solid var(--border);
+  order:10;
+}
+
+.firebase-section{
+  order:11;
+  margin-top:0;
+  padding:8px 4px 0;
+  border-top:1px solid var(--border);
+}
+
+.firebase-section .side-head{
+  padding-left:4px;
+  padding-right:4px;
+}
+
+.firebase-section #firebaseLoggedOut,
+.firebase-section #firebaseLoggedIn{
+  padding:0 4px;
 }
 
 .side-grid{
