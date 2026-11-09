@@ -91,6 +91,10 @@ async function initFirebase() {
         nameEl.textContent = displayName;
         avatarEl.textContent = displayName.charAt(0);
         addTermLine('Firebase Connected: ' + displayName, 'success');
+        
+        // Load Git Settings from Cloud upon login
+        loadGitSettingsFromCloud(user.uid);
+        
       } else {
         loggedInUI.style.display = 'none';
         loggedOutUI.style.display = 'block';
@@ -138,6 +142,32 @@ async function loadFromCloud() {
     renderTabs(); renderSidebarFiles(); switchFile(activeFile); saveNow();
     showToast('Loaded from cloud!');
   } catch (e) { showToast('Cloud load failed'); }
+}
+
+async function loadGitSettingsFromCloud(uid) {
+  try {
+    const { doc, getDoc } = await import('https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js');
+    const docSnap = await getDoc(doc(fbDb, 'users', uid, 'settings', 'git'));
+    
+    if (docSnap.exists()) {
+      const data = docSnap.data();
+      
+      // Update local storage so the Git commands work immediately
+      if (data.url) localStorage.setItem(GIT_URL_KEY, data.url);
+      if (data.token) localStorage.setItem(GIT_TOKEN_KEY, data.token);
+      
+      // Update the UI inputs if they exist
+      const urlInput = document.getElementById('gitRepoUrl');
+      const tokenInput = document.getElementById('gitToken');
+      if (urlInput) urlInput.value = data.url || '';
+      if (tokenInput) tokenInput.value = data.token || '';
+      
+      updateGitStatus();
+      addTermLine('Git settings loaded from Cloud', 'success');
+    }
+  } catch (e) {
+    console.warn('Failed to load Git settings from cloud:', e);
+  }
 }
 
 /* =========================================================
@@ -276,7 +306,6 @@ function wireTier1Features() {
     saveNow(); showToast('Imported files'); e.target.value = '';
   });
 
-  // Resizer logic
   const resizer = document.getElementById('resizer'), editorPane = document.getElementById('editorPane'), outputPane = document.getElementById('outputPane');
   let isResizing = false, startX = 0, startY = 0, startWidth = 0, startHeight = 0;
   resizer.addEventListener('pointerdown', (e) => {
@@ -858,6 +887,11 @@ async function gitClone() {
   updateGitStatus();
 }
 
+async function gitCommit() {
+  // In REST API, commit and push happen together in a single flow
+  await gitPush();
+}
+
 async function gitPush() {
   const { url, token } = getRepoConfig();
   const parsed = parseGitHubUrl(url);
@@ -942,20 +976,39 @@ function wireGitUI() {
     document.getElementById('gitSettingsModal').style.display = 'flex';
   });
 
-  document.getElementById('btnGitSaveSettings').addEventListener('click', () => {
+  document.getElementById('btnGitSaveSettings').addEventListener('click', async () => {
     const url = document.getElementById('gitRepoUrl').value.trim();
     const token = document.getElementById('gitToken').value.trim();
+    
+    // Save locally
     localStorage.setItem(GIT_URL_KEY, url);
     localStorage.setItem(GIT_TOKEN_KEY, token);
+    
+    // Save to Firebase Firestore if logged in
+    if (firebaseEnabled && fbUser) {
+      try {
+        const { doc, setDoc } = await import('https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js');
+        await setDoc(doc(fbDb, 'users', fbUser.uid, 'settings', 'git'), {
+          url: url,
+          token: token,
+          updatedAt: new Date().toISOString()
+        }, { merge: true });
+        addTermLine('Git settings saved to Cloud', 'success');
+      } catch (e) {
+        console.error('Failed to save git settings to cloud:', e);
+        addTermLine('Failed to save Git settings to cloud', 'error');
+      }
+    }
+    
     document.getElementById('gitSettingsModal').style.display = 'none';
     showToast('Git settings saved');
     updateGitStatus();
   });
 
   document.getElementById('btnGitCloseSettings').addEventListener('click', () => document.getElementById('gitSettingsModal').style.display = 'none');
-  document.getElementById('btnGitCommit').addEventListener('click', gitPush); // Commit & Push combined for API
+  document.getElementById('btnGitCommit').addEventListener('click', gitCommit); 
   document.getElementById('btnGitPush').addEventListener('click', gitPush);
-  document.getElementById('btnGitPull').addEventListener('click', gitClone); // Pull is just a fresh clone
+  document.getElementById('btnGitPull').addEventListener('click', gitClone); 
   
   document.getElementById('btnGitGraph').addEventListener('click', () => {
     document.getElementById('gitGraphContainer').style.display = 'block';
