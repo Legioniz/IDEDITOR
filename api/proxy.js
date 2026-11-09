@@ -5,25 +5,28 @@ export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Headers', '*');
   if (req.method === 'OPTIONS') return res.status(200).end();
   
-  // 2. Get the target URL from the query parameter
+  // 2. Get the target URL
   const targetUrl = req.query.url;
-  if (!targetUrl) {
-    return res.status(400).json({ error: 'Missing url query parameter' });
-  }
+  if (!targetUrl) return res.status(400).json({ error: 'Missing url parameter' });
   
   try {
-    // 3. Fetch from GitHub with the required User-Agent header
+    const headers = { ...req.headers };
+    delete headers['host'];
+    delete headers['connection'];
+    
+    // 3. Fetch from GitHub with critical headers
     const response = await fetch(targetUrl, {
       method: req.method,
       headers: {
-        ...req.headers,
+        ...headers,
         host: new URL(targetUrl).host,
-        'User-Agent': 'git/2.39.2', // Critical for GitHub to not return 404
+        'User-Agent': 'git/2.39.2', // Required for GitHub
       },
-      body: req.method !== 'GET' && req.method !== 'HEAD' ? req.body : undefined,
+      // Ensure body is only sent for methods that allow it
+      body: ['GET', 'HEAD'].includes(req.method) ? undefined : (req.body || undefined),
     });
     
-    // 4. Stream the response back to the client
+    // 4. Stream the response back safely
     res.status(response.status);
     res.setHeader('Content-Type', response.headers.get('content-type') || 'application/octet-stream');
     
