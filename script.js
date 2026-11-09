@@ -421,10 +421,20 @@ document.addEventListener('keydown', e => {
    TIER 1 FEATURES
    ========================================================= */
 function wireTier1Features() {
-  document.getElementById('btnCmdPalette').addEventListener('click', () => {
-    editor.trigger('', 'editor.action.quickCommand');
+  // Fixed Command Palette Button
+  document.getElementById('btnCmdPalette').addEventListener('click', (e) => {
+    e.preventDefault();
+    if (!editor) return;
+    
+    // Force focus back to the editor
     editor.focus();
+    
+    // Tiny delay to let mobile browsers register the focus before opening the palette
+    setTimeout(() => {
+      editor.trigger('', 'editor.action.quickCommand');
+    }, 50);
   });
+  
 
   const btnMinimap = document.getElementById('btnMinimap');
   btnMinimap.classList.toggle('on', minimapEnabled);
