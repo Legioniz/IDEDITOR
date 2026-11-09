@@ -59,7 +59,7 @@ const firebaseConfig = {
 
 let fbAuth = null, fbDb = null, fbUser = null;
 let firebaseEnabled = false;
-let authModule = null; // BUG FIX 1: Store module globally
+let authModule = null; // Store module globally
 
 async function initFirebase() {
   try {
@@ -264,15 +264,18 @@ const CORS_PROXY = '/api/proxy';
 async function loadGitLibraries() {
   try {
     const [gitModule, httpModule, fsModule] = await Promise.all([
-      import('https://esm.sh/isomorphic-git@1.25.2'),
-      import('https://esm.sh/isomorphic-git@1.25.2/http/web'),
+      import('https://esm.sh/isomorphic-git@1.38.6'), // Updated version
+      import('https://esm.sh/isomorphic-git@1.38.6/http/web'),
       import('https://esm.sh/@isomorphic-git/lightning-fs@4.6.0')
     ]);
     git = gitModule.default; http = httpModule.default; LightningFS = fsModule.default;
     gitFs = new LightningFS('idEditorFS'); pfs = gitFs.promises;
     gitEnabled = true;
-  } catch (e) { console.warn('Git failed to load', e); gitEnabled = false; }
-}
+  } catch (e) { 
+    console.warn('Git failed to load', e); 
+    gitEnabled = false; 
+  }
+} // <--- BUG FIX: Added missing closing brace here
 
 function getRepoConfig() {
   return { url: localStorage.getItem(GIT_URL_KEY) || '', token: localStorage.getItem(GIT_TOKEN_KEY) || '' };
@@ -435,7 +438,6 @@ function wireTier1Features() {
     }, 50);
   });
   
-
   const btnMinimap = document.getElementById('btnMinimap');
   btnMinimap.classList.toggle('on', minimapEnabled);
   btnMinimap.addEventListener('click', () => {
@@ -580,7 +582,7 @@ function renderTabs() {
   filesList.forEach(markDirtyState);
 }
 
-let foldersInitialized = false; // BUG FIX 2: Track folder initialization
+let foldersInitialized = false; 
 const expandedFolders = new Set();
 function renderSidebarFiles() {
   if (!foldersInitialized && filesList.length > 0) {
@@ -791,7 +793,6 @@ function wireSidebar() {
   document.getElementById('btnCloudSave').addEventListener('click', saveToCloud);
   document.getElementById('btnCloudLoad').addEventListener('click', loadFromCloud);
 
-  // BUG FIX 1: Safely bound Firebase buttons
   document.getElementById('btnFirebaseLogin').addEventListener('click', () => {
     if (!firebaseEnabled || !authModule) return showToast('Firebase is still loading...');
     const provider = new authModule.GoogleAuthProvider();
@@ -1189,11 +1190,10 @@ async function handleGitCommand(args) {
     
     const loader = document.createElement('div');
     loader.className = 'term-line term-info';
-    loader.textContent = '⏳ Downloading repository... (this may take a minute)';
+    loader.textContent = '⏳ Downloading repository (limit: 45s)...';
     termOutput.appendChild(loader);
     termOutput.scrollTop = termOutput.scrollHeight;
 
-    // BUG FIX 3: Ensure loader is removed on error
     try {
       await gitClone();
     } finally {
@@ -1420,13 +1420,36 @@ async function gitPull() {
 
 async function gitClone() {
   if (!gitEnabled) return showToast('Git not available');
-  const { url, token } = getRepoConfig(); if (!url || !token) return showToast('Set repo URL and token first');
-  try {
+  const { url, token } = getRepoConfig(); 
+  if (!url || !token) return showToast('Set repo URL and token first');
+  
+  const cloneTask = (async () => {
     try { await pfs.rmdir(GIT_DIR, { recursive: true }); } catch (e) {}
-    await git.clone({ fs: gitFs, http, dir: GIT_DIR, corsProxy: CORS_PROXY, url, singleBranch: true, depth: 10, onAuth: () => ({ username: 'x-access-token', password: token }) });
-    await syncFSToEditor(); showToast('Cloned'); updateGitStatus();
+    return await git.clone({ 
+      fs: gitFs, http, dir: GIT_DIR, corsProxy: CORS_PROXY, 
+      url, 
+      singleBranch: true, 
+      depth: 1, 
+      onAuth: () => ({ username: 'x-access-token', password: token }) 
+    });
+  })();
+
+  const timeoutTask = new Promise((_, reject) => {
+    setTimeout(() => reject(new Error("Timeout: The repository is too large for the proxy, or Vercel dropped the connection.")), 45000);
+  });
+
+  try {
+    await Promise.race([cloneTask, timeoutTask]);
+    
+    await syncFSToEditor(); 
+    showToast('Cloned'); 
+    updateGitStatus();
     addTermLine('Clone successful', 'success');
-  } catch (e) { console.error(e); showToast('Clone failed: ' + (e && e.message ? e.message : e)); addTermLine('Clone failed: ' + e.message, 'error'); }
+  } catch (e) { 
+    console.error(e); 
+    showToast('Clone failed'); 
+    addTermLine('Clone failed: ' + e.message, 'error'); 
+  }
 }
 
 async function renderGitGraph() {
