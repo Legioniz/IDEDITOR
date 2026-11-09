@@ -26,7 +26,7 @@ html,body{
   padding:8px 10px; padding-top:calc(8px + env(safe-area-inset-top));
   background:var(--panel); border-bottom:1px solid var(--border);
   flex:0 0 auto;
-  min-height: 52px; /* Force consistent height for top calculation */
+  min-height: 52px;
 }
 .title{ flex:1; font-size:14px; font-weight:600;
   white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
@@ -129,7 +129,6 @@ html[data-theme="light"] .side-item.active{
 .side-grid{
   display:grid; grid-template-columns:repeat(3, 1fr); gap:6px; padding:0 4px;
 }
-/* FIX: Removed aspect-ratio: 1/1 and set a fixed height instead of auto */
 .side-grid .icon-btn{ 
   width:100%; 
   height:40px; 
@@ -161,7 +160,6 @@ html[data-theme="light"] .git-input{ background:#fff; color:#1e1e1e; }
   padding:0 2px; 
   font-size:10px; 
 }
-/* Make settings button span full width beneath the 4 buttons */
 .git-buttons #btnGitSettings {
   grid-column: span 4;
 }
@@ -382,7 +380,6 @@ html[data-theme="light"] .m-act:active{ background:#d0d0d0; }
 @media (max-width:899px){
   .sidebar{
     position:fixed; inset:0 auto 0 0;
-    /* FIX: top offset changed from 48px to 52px to match exact top bar height */
     top:calc(52px + env(safe-area-inset-top));
     width:min(280px, 80vw);
     z-index:900;
@@ -394,7 +391,6 @@ html[data-theme="light"] .m-act:active{ background:#d0d0d0; }
   .sidebar:not(.hidden){ transform:translateX(0); }
   .sidebar.hidden{ display:flex !important; transform:translateX(-100%); }
 
-  /* FIX: Set proper mobile height for grid buttons */
   .side-grid .icon-btn { height: var(--tap); }
 
   .findbar textarea{ font-size:16px; padding:9px 12px; min-height:44px; }
@@ -413,4 +409,3 @@ html[data-theme="light"] .m-act:active{ background:#d0d0d0; }
   .console{ max-height:35%; font-size:11.5px; }
   .output-pane{ flex:0 0 50%; }
   .output-head, .console-head{ font-size:11.5px; }
-}

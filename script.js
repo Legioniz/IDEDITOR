@@ -168,8 +168,11 @@ function getRepoConfig() {
    PREVIEW BUILDER
    ========================================================= */
 function buildDoc(html, css, js) {
+  const openScript = '<scr' + 'ipt>';
+  const closeScript = '</scr' + 'ipt>';
+
   const consoleHook = `
-    <script>
+    ${openScript}
       (function(){
         function ser(v){
           if (typeof v === 'string') return v;
@@ -188,10 +191,10 @@ function buildDoc(html, css, js) {
         window.addEventListener('error', function(e){ send('error', [e.message + ' @ line ' + e.lineno]); });
         window.addEventListener('unhandledrejection', function(e){ send('error', ['Unhandled rejection: ' + ser(e.reason)]); });
       })();
-    <\/script>
+    ${closeScript}
   `;
   const headInject = consoleHook + '<style>\n' + (css || '') + '\n</style>';
-  const bodyInject = '<script>\ntry{\n' + (js || '') + '\n}catch(e){ console.error(e && e.message ? e.message : e); }\n<\/script>';
+  const bodyInject = openScript + '\ntry{\n' + (js || '') + '\n}catch(e){ console.error(e && e.message ? e.message : e); }\n' + closeScript;
   const h = html || '';
 
   if (/<html[\s>]/i.test(h)) {
@@ -309,10 +312,7 @@ function ensureModel(name) {
   return model;
 }
 
-async function initEditor() {
-  // Load Git libraries BEFORE initializing UI
-  await loadGitLibraries();
-
+function initEditor() {
   if (!filesList.length) filesList = ['index.html', 'style.css', 'script.js'];
   if (!filesList.includes(activeFile)) activeFile = filesList[0];
 
@@ -357,7 +357,6 @@ async function initEditor() {
   wirePreviewControls();
   wireSidebar();
   wireMobileActions();
-  wireGit();
   setupSaveFlush();
 
   Object.values(models).forEach(m => window.__hookAutoRun && window.__hookAutoRun(m));
@@ -394,6 +393,11 @@ async function initEditor() {
   setTheme(localStorage.getItem(THEME_KEY) || 'dark');
   updateStatusFont();
   switchFile(activeFile);
+
+  // Load Git in the background so it doesn't block the UI
+  loadGitLibraries().then(() => {
+    wireGit();
+  });
 
   showToast('Loaded');
 }
@@ -748,7 +752,7 @@ function switchFile(file) {
 }
 
 /* =========================================================
-   CLIPBOARD (shared helpers)
+   CLIPBOARD
    ========================================================= */
 function getSelectedText() {
   const sel = editor.getSelection();
@@ -1401,3 +1405,4 @@ function wireGit() {
   });
 
   updateGitStatus();
+}
