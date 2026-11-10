@@ -1,15 +1,15 @@
 # IDEDITOR 📝
 
-A powerful, fully browser-based, serverless code editor. Write HTML, CSS, and JavaScript, preview your code live, manage GitHub repositories, and use AI to write code—all directly from your browser without any backend servers.
+A powerful, fully browser-based, serverless code editor. Write HTML, CSS, and JavaScript, preview your code live, manage GitHub repositories, and use cutting-edge AI to write code—all directly from your browser without any backend servers.
 
-![Version](https://img.shields.io/badge/Version-2.0.0-blue.svg)
+![Version](https://img.shields.io/badge/Version-2.1.0-blue.svg)
 ![License](https://img.shields.io/badge/License-MIT-green.svg)
 ![Serverless](https://img.shields.io/badge/Backend-Serverless-brightgreen.svg)
 
 ## 🚀 Features
 
+- **Next-Gen AI Assistant:** Built-in chat interface supporting the latest models from **OpenAI**, **Groq**, and **Google Gemini**. It reads your active file for context and features an **"Apply to Editor"** button to instantly write code directly into your files.
 - **Multi-Project Dashboard:** Create, manage, and switch between multiple projects seamlessly.
-- **AI Assistant:** Built-in chat interface supporting **OpenAI**, **Groq**, and **Google Gemini**. It reads your active file for context and features an **"Apply to Editor"** button to instantly write code directly into your files.
 - **Monaco Editor:** Powered by the same engine as VS Code, featuring syntax highlighting, auto-complete, and minimap.
 - **Live Preview & Console:** Instantly run and preview your projects with a built-in console for debugging.
 - **GitHub Integration (REST API):**
@@ -41,3 +41,4 @@ Since IDEDITOR is 100% client-side, you don't need a complex backend setup.
 1. **Clone the repository:**
    ```bash
    git clone https://github.com/YOUR_USERNAME/YOUR_REPO_NAME.git
+   cd YOUR_REPO_NAME

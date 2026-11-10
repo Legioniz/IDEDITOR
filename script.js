@@ -1268,15 +1268,32 @@ async function renderGitGraph() {
 const AI_PROVIDERS = {
   openai: {
     url: 'https://api.openai.com/v1/chat/completions',
-    models: ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'gpt-3.5-turbo']
+    models: [
+      'gpt-6.1-terra',
+      'gpt-6.2-astra',
+      'gpt-5.6-sol',
+      'gpt-5.2-chat-latest'
+    ]
   },
   groq: {
     url: 'https://api.groq.com/openai/v1/chat/completions',
-    models: ['llama3-70b-8192', 'llama3-8b-8192', 'mixtral-8x7b-32768', 'gemma-7b-it']
+    models: [
+      'openai/gpt-oss-120b',
+      'openai/gpt-oss-20b',
+      'qwen/qwen3.6-27b',
+      'moonshotai/kimi-k2-instruct-0905',
+      'llama-3.1-8b-instant'
+    ]
   },
   gemini: {
     url: 'https://generativelanguage.googleapis.com/v1beta/models/',
-    models: ['gemini-1.5-pro-latest', 'gemini-1.5-flash-latest', 'gemini-pro']
+    models: [
+      'gemini-4-argon',
+      'gemini-3.8-flash',
+      'gemini-3.6-pro',
+      'gemini-3.6-flash',
+      'gemini-3.5-flash-lite'
+    ]
   }
 };
 
