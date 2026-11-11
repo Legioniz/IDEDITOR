@@ -556,10 +556,9 @@ function renderTabs() {
     btn.dataset.file = name; btn.textContent = basename(name); btn.title = name;
     attachFileMenuHandlers(btn, name); nav.appendChild(btn);
   });
-  const prevBtn = document.createElement('button');
-  prevBtn.className = 'tab tab-preview' + (activeFile === 'preview' ? ' active' : '');
-  prevBtn.dataset.file = 'preview'; prevBtn.innerHTML = '▶ Preview';
-  prevBtn.addEventListener('click', () => switchFile('preview')); nav.appendChild(prevBtn);
+  
+  // Preview tab removed — preview is triggered via Run button or file context menu
+
   const addBtn = document.createElement('button'); addBtn.className = 'tab-add'; addBtn.title = 'New file'; addBtn.textContent = '+';
   addBtn.addEventListener('click', promptNewFile); nav.appendChild(addBtn);
   filesList.forEach(markDirtyState);
@@ -625,13 +624,23 @@ let tabMenuEl = null, tabMenuFile = null;
 function getTabMenu() {
   if (tabMenuEl) return tabMenuEl;
   tabMenuEl = document.createElement('div'); tabMenuEl.className = 'tab-menu';
-  tabMenuEl.innerHTML = '<button class="menu-item" data-act="rename"><svg viewBox="0 0 24 24" width="14" height="14"><path d="M4 20h4l10-10a2 2 0 0 0-4-4L4 16v4z" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linejoin="round"/></svg><span>Rename</span></button><button class="menu-item" data-act="delete"><svg viewBox="0 0 24 24" width="14" height="14"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Delete</span></button>';
+  tabMenuEl.innerHTML =
+    '<button class="menu-item" data-act="preview"><svg viewBox="0 0 24 24" width="14" height="14"><path d="M7 5l12 7-12 7V5z" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linejoin="round"/></svg><span>Preview</span></button>' +
+    '<div class="menu-divider"></div>' +
+    '<button class="menu-item" data-act="rename"><svg viewBox="0 0 24 24" width="14" height="14"><path d="M4 20h4l10-10a2 2 0 0 0-4-4L4 16v4z" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linejoin="round"/></svg><span>Rename</span></button>' +
+    '<button class="menu-item" data-act="delete"><svg viewBox="0 0 24 24" width="14" height="14"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Delete</span></button>';
   document.body.appendChild(tabMenuEl);
   tabMenuEl.addEventListener('click', e => {
     const btn = e.target.closest('[data-act]'); if (!btn) return;
-    const act = btn.dataset.act, name = tabMenuFile; closeTabMenu();
-    if (act === 'rename') { const newName = prompt('Rename "' + name + '" to:', name); if (newName && newName.trim() && newName.trim() !== name) renameFile(name, newName.trim()); }
-    else if (act === 'delete') deleteFile(name);
+    e.stopPropagation();
+    const act = btn.dataset.act, name = tabMenuFile;
+    const x = e.clientX, y = e.clientY;
+    closeTabMenu();
+    if (act === 'preview') showPreviewLayoutMenu(x, y);
+    else if (act === 'rename') {
+      const newName = prompt('Rename "' + name + '" to:', name);
+      if (newName && newName.trim() && newName.trim() !== name) renameFile(name, newName.trim());
+    } else if (act === 'delete') deleteFile(name);
   });
   document.addEventListener('click', e => { if (tabMenuEl && !tabMenuEl.contains(e.target)) closeTabMenu(); });
   document.addEventListener('keydown', e => { if (e.key === 'Escape') closeTabMenu(); });
@@ -647,6 +656,44 @@ function showTabMenu(x, y, filename) {
   });
 }
 function closeTabMenu() { if (tabMenuEl) tabMenuEl.style.display = 'none'; tabMenuFile = null; }
+
+/* ---------- Preview layout submenu ---------- */
+let previewMenuEl = null;
+function getPreviewMenu() {
+  if (previewMenuEl) return previewMenuEl;
+  previewMenuEl = document.createElement('div');
+  previewMenuEl.className = 'tab-menu';
+  previewMenuEl.innerHTML =
+    '<button class="menu-item" data-layout="desktop"><svg viewBox="0 0 24 24" width="14" height="14"><rect x="3" y="4" width="18" height="12" rx="1" stroke="currentColor" stroke-width="1.8" fill="none"/><path d="M8 20h8M12 16v4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg><span>Desktop Layout</span></button>' +
+    '<button class="menu-item" data-layout="mobile"><svg viewBox="0 0 24 24" width="14" height="14"><rect x="7" y="3" width="10" height="18" rx="2" stroke="currentColor" stroke-width="1.8" fill="none"/><path d="M11 18h2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg><span>Mobile Layout</span></button>';
+  document.body.appendChild(previewMenuEl);
+  previewMenuEl.addEventListener('click', e => {
+    const btn = e.target.closest('[data-layout]'); if (!btn) return;
+    e.stopPropagation();
+    const layout = btn.dataset.layout;
+    closePreviewMenu();
+    triggerPreview(layout);
+  });
+  document.addEventListener('click', e => { if (previewMenuEl && !previewMenuEl.contains(e.target)) closePreviewMenu(); });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') closePreviewMenu(); });
+  return previewMenuEl;
+}
+function showPreviewLayoutMenu(x, y) {
+  const menu = getPreviewMenu();
+  menu.style.left = x + 'px'; menu.style.top = y + 'px'; menu.style.display = 'block';
+  requestAnimationFrame(() => {
+    const rect = menu.getBoundingClientRect();
+    if (rect.right > innerWidth) menu.style.left = Math.max(8, innerWidth - rect.width - 8) + 'px';
+    if (rect.bottom > innerHeight) menu.style.top = Math.max(8, innerHeight - rect.height - 8) + 'px';
+  });
+}
+function closePreviewMenu() { if (previewMenuEl) previewMenuEl.style.display = 'none'; }
+function triggerPreview(layout) {
+  const outputPane = document.getElementById('outputPane');
+  outputPane.classList.toggle('mobile-mode', layout === 'mobile');
+  run();
+}
+
 function attachFileMenuHandlers(el, filename, onClickOverride) {
   el.addEventListener('contextmenu', e => { e.preventDefault(); showTabMenu(e.clientX, e.clientY, filename); });
   let pressTimer = null, suppressClick = false;
@@ -898,8 +945,21 @@ function replaceAll() {
   showToast('Replaced ' + found.length + (found.length === 1 ? ' match' : ' matches'));
 }
 
-function wireRun() { document.getElementById('btnRun').addEventListener('click', run); }
-const consoleEl = document.getElementById('console'), termEl = document.getElementById('terminal'), termOutput = document.getElementById('termOutput'), termInput = document.getElementById('termInput'), bottomPanel = document.getElementById('bottomPanel');
+function wireRun() {
+  document.getElementById('btnRun').addEventListener('click', () => {
+    document.getElementById('outputPane').classList.remove('mobile-mode');
+    run();
+  });
+}
+
+/* =========================================================
+   CONSOLE & TERMINAL (Global Panel)
+   ========================================================= */
+const consoleEl = document.getElementById('console');
+const termEl = document.getElementById('terminal');
+const termOutput = document.getElementById('termOutput');
+const termInput = document.getElementById('termInput');
+const bottomPanel = document.getElementById('bottomPanel');
 let activePanel = 'console';
 
 function setActivePanel(panel) {

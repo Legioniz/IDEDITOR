@@ -951,3 +951,46 @@ html[data-theme="light"] .ai-code-block {
   flex-direction: column;
   align-items: flex-start;
 }
+/* =========================================================
+   PREVIEW LAYOUT: Desktop / Mobile
+   ========================================================= */
+
+/* Menu divider inside tab-menu */
+.menu-divider {
+  height: 1px;
+  background: var(--border);
+  margin: 4px 2px;
+}
+html[data-theme="light"] .menu-divider { background: #ccc; }
+
+/* Mobile layout: constrain iframe to a phone-sized device frame */
+.output-pane.mobile-mode {
+  background: #1a1a1a;
+  align-items: center;
+}
+html[data-theme="light"] .output-pane.mobile-mode {
+  background: #dcdcdc;
+}
+.output-pane.mobile-mode .output-head {
+  background: transparent;
+  border-bottom: 1px solid var(--border);
+  align-self: stretch;
+}
+.output-pane.mobile-mode #preview {
+  flex: 1 1 auto;
+  width: 100%;
+  max-width: 375px;
+  min-height: 0;
+  margin: 12px 8px;
+  border: 8px solid #222;
+  border-radius: 20px;
+  background: #fff;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.6);
+}
+html[data-theme="light"] .output-pane.mobile-mode #preview {
+  border-color: #555;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+}
+
+/* Mobile-mode should also work in fullscreen preview */
+.output-pane.mobile-mode.fullscreen { align-items: center; }
