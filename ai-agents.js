@@ -49,9 +49,26 @@
     fireworks: ['https://api.fireworks.ai/inference/v1', []],
     mistral: ['https://api.mistral.ai/v1', ['mistral-large-latest', 'mistral-small-latest']],
     ollama: ['http://localhost:11434/v1', ['llama3.2', 'qwen2.5-coder', 'deepseek-coder-v2']],
-    custom: ['', []],
+      custom: ['', []],
     mock: ['mock', ['mock-model']]
   };
+  
+  // Explicit provider display order.
+  // OpenAI, Groq, Gemini first (the 3 primary providers), then the rest.
+  // Kept in sync with PRESETS keys — any provider added to PRESETS should be
+  // added here or it will not appear in the picker.
+  const PROVIDER_ORDER = [
+    'openai',
+    'groq',
+    'gemini',
+    'together',
+    'openrouter',
+    'fireworks',
+    'mistral',
+    'ollama',
+    'custom',
+    'mock'
+  ];
 
   // ─── State ─────────────────────────────────────────────────
   const state = { agents: [], active: '', mode: 'single', compare: [], pipeline: [] };
@@ -706,14 +723,15 @@
       if (type === 'textarea') {
         input = document.createElement('textarea');
       } else if (type === 'select') {
-        input = document.createElement('select');
-        Object.keys(PRESETS).forEach((v) => {
-          const opt = document.createElement('option');
-          opt.value = v;
-          opt.textContent = LABELS[v] + (v === 'mock' ? ' (test)' : '');
-          input.appendChild(opt);
-        });
-      } else {
+  input = document.createElement('select');
+  PROVIDER_ORDER.forEach((v) => {
+    if (!PRESETS[v]) return; // skip unknown keys defensively
+    const opt = document.createElement('option');
+    opt.value = v;
+    opt.textContent = LABELS[v] + (v === 'mock' ? ' (test)' : '');
+    input.appendChild(opt);
+  });
+} else {
         input = document.createElement('input');
         input.type = type;
       }
@@ -796,7 +814,7 @@
       e.preventDefault();
       const candidate = collect();
       if (candidate.provider === 'custom' && !candidate.baseUrl) {
-        toast('Custom agents need a base URL.');
+        toast(' agents need a base URL.');
         return;
       }
       state.agents = state.agents.filter((a) => a.id !== candidate.id);
@@ -817,11 +835,19 @@
       console.error('[ai-agents] Failed to load state', err);
       return;
     }
-    attached = true;
-renderToolbar();
-const settingsBtn = get('btnAISettings');
-if (settingsBtn) settingsBtn.addEventListener('click', () => openModal('agents'));
+      attached = true;
+  renderToolbar();
+  const settingsBtn = get('btnAISettings');
+  if (settingsBtn) settingsBtn.addEventListener('click', () => openModal('agents'));
+  const sendBtn = get('btnSendAI');
+  if (sendBtn) sendBtn.addEventListener('click', send);
+  const aiInput = get('aiInput');
+  if (aiInput) {
+    aiInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
+    });
   }
+}
 
   // ─── Public API ────────────────────────────────────────────
   window.AIAgents = {
