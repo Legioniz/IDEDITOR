@@ -1322,215 +1322,39 @@ async function renderGitGraph() {
 }
 
 /* =========================================================
-   AI ASSISTANT IMPLEMENTATION (OpenAI, Groq, Gemini)
+   AI ASSISTANT IMPLEMENTATION
    ========================================================= */
 
 const AI_PROVIDERS = {
-  openai: {
-    url: 'https://api.openai.com/v1/chat/completions',
-    models: [
-      'gpt-6.1-terra',
-      'gpt-6.2-astra',
-      'gpt-5.6-sol',
-      'gpt-5.2-chat-latest'
-    ]
-  },
-  groq: {
-    url: 'https://api.groq.com/openai/v1/chat/completions',
-    models: [
-      'openai/gpt-oss-120b',
-      'openai/gpt-oss-20b',
-      'qwen/qwen3.6-27b',
-      'moonshotai/kimi-k2-instruct-0905',
-      'llama-3.1-8b-instant'
-    ]
-  },
-  gemini: {
-    url: 'https://generativelanguage.googleapis.com/v1beta/models/',
-    models: [
-      'gemini-4-argon',
-      'gemini-3.8-flash',
-      'gemini-3.6-pro',
-      'gemini-3.6-flash',
-      'gemini-3.5-flash-lite'
-    ]
-  }
+  openai: { url: 'https://api.openai.com/v1/chat/completions', models: ['gpt-4o', 'gpt-4o-mini', 'gpt-4.1', 'o3-mini'] },
+  groq: { url: 'https://api.groq.com/openai/v1/chat/completions', models: ['llama-3.1-8b-instant', 'llama-3.3-70b-versatile', 'openai/gpt-oss-120b', 'moonshotai/kimi-k2-instruct'] },
+  gemini: { url: 'https://generativelanguage.googleapis.com/v1beta/models/', models: ['gemini-1.5-pro', 'gemini-1.5-flash', 'gemini-2.0-flash'] }
 };
 
-function getAIConfig() {
-  return {
-    provider: localStorage.getItem(AI_PROVIDER_KEY) || 'openai',
-    key: localStorage.getItem(AI_KEY_KEY) || '',
-    model: localStorage.getItem(AI_MODEL_KEY) || 'gpt-4o-mini'
-  };
-}
-
 function wireAI() {
-  const aiInput = document.getElementById('aiInput');
-  const btnSendAI = document.getElementById('btnSendAI');
-  const aiMessages = document.getElementById('aiMessages');
-  const modal = document.getElementById('aiSettingsModal');
   const providerSelect = document.getElementById('aiProvider');
   const apiKeyInput = document.getElementById('aiApiKey');
   const modelSelect = document.getElementById('aiModel');
-
-  function updateModelOptions(provider) {
-    modelSelect.innerHTML = '';
-    AI_PROVIDERS[provider].models.forEach(m => {
-      const opt = document.createElement('option');
-      opt.value = m;
-      opt.textContent = m;
-      modelSelect.appendChild(opt);
-    });
+  [providerSelect, apiKeyInput, modelSelect].forEach(element => { if (element) element.style.display = 'none'; });
+  const options = {
+    editor,
+    models,
+    getActiveFile: () => activeFile,
+    legacy: { providerKey: AI_PROVIDER_KEY, apiKey: AI_KEY_KEY, modelKey: AI_MODEL_KEY }
+  };
+  if (!window.AIAgents || typeof window.AIAgents.attach !== 'function') {
+    window.__aiAttachOptions = options;
+    return;
   }
-
-  providerSelect.addEventListener('change', (e) => updateModelOptions(e.target.value));
-
-  document.getElementById('btnAISettings').addEventListener('click', () => {
-    const conf = getAIConfig();
-    providerSelect.value = conf.provider;
-    apiKeyInput.value = conf.key;
-    updateModelOptions(conf.provider);
-    modelSelect.value = conf.model;
-    modal.style.display = 'flex';
-  });
-
-  document.getElementById('btnSaveAISettings').addEventListener('click', () => {
-    localStorage.setItem(AI_PROVIDER_KEY, providerSelect.value);
-    localStorage.setItem(AI_KEY_KEY, apiKeyInput.value.trim());
-    localStorage.setItem(AI_MODEL_KEY, modelSelect.value);
-    modal.style.display = 'none';
-    showToast('AI Settings saved');
-  });
-
-  document.getElementById('btnCloseAISettings').addEventListener('click', () => modal.style.display = 'none');
-
-  async function sendAIMessage() {
-    const text = aiInput.value.trim();
-    if (!text) return;
-    
-    aiInput.value = '';
-    aiInput.style.height = '36px';
-
-    const conf = getAIConfig();
-    if (!conf.key) {
-      addAIMessage('system', 'Please configure your API key in the settings first (Gear icon).');
-      return;
-    }
-
-    addAIMessage('user', text);
-    const loadingMsg = addAIMessage('assistant', 'Thinking...');
-
-    const currentFile = activeFile;
-    const fileContent = models[currentFile] ? models[currentFile].getValue() : '';
-    
-    const systemPrompt = `You are an expert AI coding assistant inside IDEDITOR. 
-The user is currently working on the file "${currentFile}". 
-Here is the current code:
-\`\`\`
-${fileContent}
-\`\`\`
-Provide helpful answers. Wrap code in markdown blocks.`;
-
-    try {
-      let responseText = '';
-
-      if (conf.provider === 'gemini') {
-        const url = `${AI_PROVIDERS.gemini.url}${conf.model}:generateContent?key=${conf.key}`;
-        const res = await fetch(url, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ contents: [{ parts: [{ text: systemPrompt + "\n\nUser Request: " + text }] }] })
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error?.message || 'Gemini API Error');
-        responseText = data.candidates[0].content.parts[0].text;
-
-      } else {
-        const url = AI_PROVIDERS[conf.provider].url;
-        const res = await fetch(url, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${conf.key}` },
-          body: JSON.stringify({
-            model: conf.model,
-            messages: [ { role: 'system', content: systemPrompt }, { role: 'user', content: text } ]
-          })
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error?.message || 'API Error');
-        responseText = data.choices[0].message.content;
-      }
-
-      loadingMsg.remove();
-      addAIMessage('assistant', responseText);
-
-    } catch (error) {
-      loadingMsg.remove();
-      addAIMessage('system', 'Error: ' + error.message);
-    }
-  }
-
-function addAIMessage(role, text) {
-  const div = document.createElement('div');
-  div.className = 'ai-msg ai-' + role;
-  
-  // Split the text into normal text and code blocks
-  const parts = text.split(/(```[\s\S]*?```)/g);
-  
-  parts.forEach(part => {
-    if (part.startsWith('```') && part.endsWith('```')) {
-      // It's a code block
-      const code = part.slice(3, -3).replace(/^[a-zA-Z]+\n/, ''); // Remove language tag
-      const codeBlock = document.createElement('div');
-      codeBlock.className = 'ai-code-block';
-      
-      const codePre = document.createElement('pre');
-      codePre.textContent = code;
-      codePre.style.margin = '0 0 8px 0';
-      codePre.style.whiteSpace = 'pre';
-      
-      const applyBtn = document.createElement('button');
-      applyBtn.textContent = '⚡ Apply to Editor';
-      applyBtn.className = 'btn primary';
-      applyBtn.style.cssText = 'height: 28px; font-size: 11px; padding: 0 10px;';
-      
-      // The Action to apply code
-      applyBtn.onclick = () => {
-        if (!editor || !activeFile) return;
-        const model = models[activeFile];
-        if (!model) return;
-        
-        // Replace entire file content (can be undone with Ctrl+Z)
-        model.pushEditOperations(
-          [],
-          [{ range: model.getFullModelRange(), text: code }],
-          () => null
-        );
-        showToast(`Applied to ${basename(activeFile)}!`);
-      };
-      
-      codeBlock.appendChild(codePre);
-      codeBlock.appendChild(applyBtn);
-      div.appendChild(codeBlock);
-    } else {
-      // It's normal text
-      const textDiv = document.createElement('div');
-      textDiv.innerHTML = escapeHtml(part).replace(/\n/g, '<br>');
-      div.appendChild(textDiv);
-    }
-  });
-  
-  aiMessages.appendChild(div);
-  aiMessages.scrollTop = aiMessages.scrollHeight;
-  return div;
+  window.AIAgents.attach(options);
 }
 
-  btnSendAI.addEventListener('click', sendAIMessage);
-  aiInput.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendAIMessage(); }
-  });
-  aiInput.addEventListener('input', () => {
-    aiInput.style.height = 'auto';
-    aiInput.style.height = Math.min(aiInput.scrollHeight, 100) + 'px';
-  });
+function addAIMessage(role, text) {
+  if (window.AIAgents && typeof window.AIAgents.renderMessage === 'function') {
+    return window.AIAgents.renderMessage(role, text);
+  }
+  const div = document.createElement('div');
+  div.className = 'ai-msg ai-' + role;
+  div.textContent = text;
+  return div;
 }

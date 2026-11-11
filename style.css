@@ -994,3 +994,23 @@ html[data-theme="light"] .output-pane.mobile-mode #preview {
 
 /* Mobile-mode should also work in fullscreen preview */
 .output-pane.mobile-mode.fullscreen { align-items: center; }
+
+/* Multi-agent AI UI */
+.ai-toolbar { display: flex; gap: 6px; align-items: center; padding: 6px; border-bottom: 1px solid var(--border); }
+.ai-toolbar .ai-mode-select { width: 110px; height: 30px; }
+.ai-agent-picker { position: relative; min-width: 130px; }
+.ai-agent-menu { display: none; position: absolute; z-index: 5; top: 34px; left: 0; min-width: 260px; padding: 8px; background: var(--panel); border: 1px solid var(--border); box-shadow: 0 8px 20px #0005; }
+.ai-agent-menu.open { display: grid; gap: 6px; }
+.ai-agent-menu label { font-size: 11px; white-space: normal; }
+.ai-agent-chip { display: block; margin-bottom: 6px; color: var(--accent); font-size: 11px; font-weight: 600; }
+.ai-error-card { border-left: 3px solid #e05252; background: #5a202033; }
+.ai-pipeline-divider { padding: 4px; color: var(--muted); text-align: center; font-size: 11px; }
+.ai-settings-tabs { display: flex; gap: 6px; margin-bottom: 12px; }
+.ai-agent-row { display: flex; align-items: center; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 12px; }
+.ai-agent-row > span { flex: 1; color: var(--muted); }
+.ai-agent-row .btn { margin-left: 3px; padding: 3px 6px; font-size: 11px; }
+.ai-agent-form { display: grid; gap: 8px; }
+.ai-agent-form label { display: grid; gap: 3px; color: var(--muted); font-size: 11px; }
+.ai-agent-form input, .ai-agent-form select, .ai-agent-form textarea { width: 100%; box-sizing: border-box; }
+.ai-agent-form textarea { min-height: 70px; resize: vertical; }
+.ai-agent-form > div { display: flex; gap: 6px; margin-top: 5px; }
