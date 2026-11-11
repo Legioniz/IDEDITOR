@@ -818,9 +818,9 @@
       return;
     }
     attached = true;
-    renderToolbar();
-    const settingsBtn = get('btnAISettings');
-    if (settingsBtn) settingsBtn.addEventListener('click', () => openModal('agents'));
+renderToolbar();
+const settingsBtn = get('btnAISettings');
+if (settingsBtn) settingsBtn.addEventListener('click', () => openModal('agents'));
   }
 
   // ─── Public API ────────────────────────────────────────────
