@@ -1014,3 +1014,206 @@ html[data-theme="light"] .output-pane.mobile-mode #preview {
 .ai-agent-form input, .ai-agent-form select, .ai-agent-form textarea { width: 100%; box-sizing: border-box; }
 .ai-agent-form textarea { min-height: 70px; resize: vertical; }
 .ai-agent-form > div { display: flex; gap: 6px; margin-top: 5px; }
+/* =========================================================
+   BUGFIX PATCH — color / theme / mobile layout
+   Append-only. Does not modify any existing rule.
+   ========================================================= */
+
+/* ── 1. Define missing --muted (used by AI pipeline/agent form) ── */
+:root{ --muted:#8b8b8b; }
+html[data-theme="light"]{ --muted:#666666; }
+
+/* ── 2. AI panel background — was hardcoded dark ────────────── */
+.ai-panel{ background:var(--bg); }
+html[data-theme="light"] .ai-panel{ background:var(--bg); }
+
+/* ── 3. AI agent form inputs — match .git-input theme ───────── */
+.ai-agent-form input,
+.ai-agent-form select,
+.ai-agent-form textarea{
+  padding:8px 10px;
+  font-size:12.5px;
+  color:var(--fg);
+  background:#1b1b1b;
+  border:1px solid var(--border);
+  border-radius:6px;
+  outline:none;
+  font-family:inherit;
+  min-height:34px;
+  transition:border-color .12s;
+}
+.ai-agent-form input:focus,
+.ai-agent-form select:focus,
+.ai-agent-form textarea:focus{ border-color:var(--accent); }
+.ai-agent-form input[type="range"]{
+  padding:0; min-height:24px;
+  background:transparent; border:0;
+}
+html[data-theme="light"] .ai-agent-form input,
+html[data-theme="light"] .ai-agent-form select,
+html[data-theme="light"] .ai-agent-form textarea{
+  background:#fff;
+  color:#1e1e1e;
+  border-color:#c8c8c8;
+}
+html[data-theme="light"] .ai-agent-form input[type="range"]{
+  background:transparent; border:0;
+}
+
+/* ── 4. Active tab styling in AI settings modal ─────────────── */
+.ai-settings-tabs .btn.active{
+  background:var(--accent);
+  border-color:var(--accent);
+  color:#fff;
+}
+html[data-theme="light"] .ai-settings-tabs .btn.active{
+  background:var(--accent);
+  border-color:var(--accent);
+  color:#fff;
+}
+
+/* ── 5. Agent picker menu — softer shadow in light theme ────── */
+html[data-theme="light"] .ai-agent-menu{
+  box-shadow:0 8px 20px rgba(0,0,0,.18);
+}
+
+/* ── 6. Error card — visible tint in light theme ────────────── */
+html[data-theme="light"] .ai-error-card{
+  background:rgba(224,82,82,.08);
+  border-left-color:#c0392b;
+}
+
+/* ── 7. Mode select — kill inherited .git-input margin ──────── */
+.ai-toolbar .ai-mode-select{
+  margin:0;
+  background-image:none;
+  padding-right:8px;
+}
+html[data-theme="light"] .ai-toolbar .ai-mode-select{
+  background-image:none;
+}
+
+/* ── 8. AI toolbar — wrap instead of overflow on narrow ─────── */
+.ai-toolbar{ flex-wrap:wrap; row-gap:4px; }
+.ai-toolbar .btn{
+  flex:0 1 auto;
+  padding:0 10px;
+  font-size:11.5px;
+}
+@media (max-width:899px){
+  .ai-toolbar{ gap:4px; padding:4px; }
+  .ai-toolbar .btn{ height:32px; padding:0 8px; font-size:11px; }
+  .ai-agent-picker{
+    min-width:0;
+    flex:1 1 100%;
+  }
+  .ai-agent-picker .btn{
+    width:100%;
+    overflow:hidden;
+    text-overflow:ellipsis;
+    white-space:nowrap;
+    justify-content:flex-start;
+  }
+  .ai-toolbar .ai-mode-select{
+    width:auto;
+    min-width:88px;
+    height:32px;
+    font-size:12px;
+  }
+}
+
+/* ── 9. Agent picker menu — clamp to viewport ──────────────── */
+.ai-agent-menu{
+  min-width:220px;
+  max-width:calc(100vw - 24px);
+  max-height:50vh;
+  overflow-y:auto;
+}
+
+/* ── 10. AI settings modal — scrollable body ───────────────── */
+#aiSettingsModal .modal-content{
+  max-width:480px;
+  max-height:calc(100vh - 40px);
+  display:flex;
+  flex-direction:column;
+}
+#aiSettingsModal .ai-settings-body{
+  flex:1 1 auto;
+  overflow-y:auto;
+  min-height:0;
+  padding-right:4px;
+}
+@media (max-width:899px){
+  #aiSettingsModal .modal{ padding:12px; }
+  #aiSettingsModal .modal-content{
+    max-width:100%;
+    max-height:calc(100dvh - 24px);
+    padding:16px;
+  }
+}
+
+/* ── 11. AI agent form on mobile — touch targets + no iOS zoom */
+@media (max-width:899px){
+  .ai-agent-form{ gap:10px; }
+  .ai-agent-form input,
+  .ai-agent-form select,
+  .ai-agent-form textarea{
+    font-size:16px;
+    min-height:44px;
+  }
+  .ai-agent-form textarea{ min-height:88px; }
+  .ai-agent-form > div{ flex-wrap:wrap; }
+  .ai-agent-form > div .btn{
+    flex:1 1 auto;
+    min-height:40px;
+    font-size:13px;
+  }
+  .ai-agent-row{
+    flex-wrap:wrap;
+    gap:6px;
+    padding:10px 0;
+  }
+  .ai-agent-row > span{
+    flex:1 1 100%;
+    order:3;
+    font-size:11px;
+    padding-left:22px;
+  }
+  .ai-agent-row .btn{
+    padding:6px 10px;
+    font-size:12px;
+    min-height:32px;
+  }
+}
+
+/* ── 12. Mobile-mode preview — tighter frame on phones ─────── */
+@media (max-width:899px){
+  .output-pane.mobile-mode #preview{
+    margin:6px 4px;
+    border-width:6px;
+    border-radius:14px;
+    max-width:calc(100vw - 20px);
+    box-shadow:0 10px 28px rgba(0,0,0,.5);
+  }
+  html[data-theme="light"] .output-pane.mobile-mode #preview{
+    box-shadow:0 10px 28px rgba(0,0,0,.25);
+  }
+}
+
+/* ── 13. Apply-to-editor + code font on mobile ─────────────── */
+@media (max-width:899px){
+  .ai-code-block pre{ font-size:11.5px; line-height:1.5; }
+  .ai-code-block .btn{
+    min-height:36px;
+    font-size:12px;
+    padding:0 12px;
+  }
+}
+
+/* ── 14. Empty-agent menu state ────────────────────────────── */
+.ai-agent-menu > div{
+  padding:8px;
+  font-size:11px;
+  color:var(--muted);
+  text-align:center;
+}
