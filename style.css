@@ -1217,3 +1217,84 @@ html[data-theme="light"] .ai-toolbar .ai-mode-select{
   color:var(--muted);
   text-align:center;
 }
+/* =========================================================
+   AI CODE BLOCK — Keep / Discard actions (Copilot-style)
+   ========================================================= */
+.ai-code-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+  align-self: stretch;
+}
+.ai-code-actions .btn {
+  font-size: 12px;
+  padding: 0 12px;
+  height: 30px;
+  min-height: 30px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.ai-keep-btn {
+  background: #238636 !important;
+  border-color: #2ea043 !important;
+  color: #fff !important;
+}
+.ai-keep-btn:hover { background: #2ea043 !important; }
+.ai-keep-btn:active { background: #2c974b !important; }
+
+.ai-discard-btn {
+  background: transparent !important;
+  border-color: #d64545 !important;
+  color: #ff7b72 !important;
+}
+.ai-discard-btn:hover { background: rgba(214, 69, 69, 0.12) !important; }
+.ai-discard-btn:active { background: rgba(214, 69, 69, 0.22) !important; }
+
+.ai-applied-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11.5px;
+  font-weight: 500;
+  color: #3fb950;
+  padding: 5px 10px;
+  background: rgba(63, 185, 80, 0.12);
+  border-radius: 5px;
+}
+
+/* Light theme overrides */
+html[data-theme="light"] .ai-keep-btn {
+  background: #1a7f37 !important;
+  border-color: #1a7f37 !important;
+}
+html[data-theme="light"] .ai-keep-btn:hover { background: #166b2e !important; }
+
+html[data-theme="light"] .ai-discard-btn {
+  color: #cf222e !important;
+  border-color: #cf222e !important;
+}
+html[data-theme="light"] .ai-discard-btn:hover {
+  background: rgba(207, 34, 46, 0.08) !important;
+}
+
+html[data-theme="light"] .ai-applied-indicator {
+  color: #1a7f37;
+  background: rgba(26, 127, 55, 0.1);
+}
+
+/* Mobile touch targets */
+@media (max-width: 899px) {
+  .ai-code-actions .btn {
+    height: 36px;
+    min-height: 36px;
+    font-size: 13px;
+    padding: 0 14px;
+  }
+  .ai-applied-indicator {
+    font-size: 12px;
+    padding: 6px 10px;
+  }
+}

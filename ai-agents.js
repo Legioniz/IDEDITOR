@@ -16,6 +16,12 @@
      idEditor.orchestrationMode — single | parallel | pipeline
      idEditor.compareAgentIds   — parallel mode selection
      idEditor.pipelineAgentIds  — pipeline mode selection (ordered)
+
+   AI code blocks support Keep / Discard:
+     ⚡ Apply to Editor   — writes AI code into the active model (undoable)
+     ✓ Keep               — confirms; clears buttons
+     ✗ Discard            — reverts to the content that existed before Apply
+                            (with confirmation if the user edited since Apply)
    ========================================================= */
 (function () {
   'use strict';
@@ -49,14 +55,12 @@
     fireworks: ['https://api.fireworks.ai/inference/v1', []],
     mistral: ['https://api.mistral.ai/v1', ['mistral-large-latest', 'mistral-small-latest']],
     ollama: ['http://localhost:11434/v1', ['llama3.2', 'qwen2.5-coder', 'deepseek-coder-v2']],
-      custom: ['', []],
+    custom: ['', []],
     mock: ['mock', ['mock-model']]
   };
-  
+
   // Explicit provider display order.
   // OpenAI, Groq, Gemini first (the 3 primary providers), then the rest.
-  // Kept in sync with PRESETS keys — any provider added to PRESETS should be
-  // added here or it will not appear in the picker.
   const PROVIDER_ORDER = [
     'openai',
     'groq',
@@ -131,7 +135,6 @@
     const stored = localStorage.getItem(STORAGE.agents);
 
     if (stored === null) {
-      // First load — try migrating from legacy single-agent config
       const provider = localStorage.getItem(LEGACY.provider);
       const key = localStorage.getItem(LEGACY.key);
       const model = localStorage.getItem(LEGACY.model);
@@ -179,7 +182,7 @@
 
   function validate(agent) {
     if (!agent) throw new Error('No agent configured.');
-    if (agent.apiShape === 'mock') return; // no further checks for mock
+    if (agent.apiShape === 'mock') return;
     if (!agent.model) throw new Error(agent.name + ': model is required.');
     if (!agent.apiKey) throw new Error(agent.name + ': API key is required.');
     const ok = agent.baseUrl.startsWith('https://')
@@ -259,15 +262,97 @@
     });
   }
 
-  // ─── Message rendering ─────────────────────────────────────
-  function applyCodeToEditor(code) {
+  // ─── Apply / Keep / Discard ────────────────────────────────
+  // Applies AI-generated code to the active model and turns the block's
+  // action row into Keep / Discard buttons.
+  function applyCodeAsSuggestion(code, block) {
     const file = context?.getActiveFile?.();
     const model = file && context.models[file];
     if (!model) { toast('No active file'); return; }
-    model.pushEditOperations([], [{ range: model.getFullModelRange(), text: code }], () => null);
-    toast('Applied to ' + file.split('/').pop() + '!');
+    if (model.isDisposed && model.isDisposed()) { toast('File no longer open'); return; }
+
+    const originalContent = model.getValue();
+    const originalFile = file;
+
+    // Apply — undoable via Monaco's native Ctrl+Z
+    model.pushEditOperations(
+      [],
+      [{ range: model.getFullModelRange(), text: code }],
+      () => null
+    );
+    model.pushStackElement();
+
+    const pendingState = {
+      model,
+      originalContent,
+      originalFile,
+      appliedVersion: model.getAlternativeVersionId()
+    };
+
+    renderKeepDiscardButtons(block, pendingState, code);
+    toast('Change applied — Keep or Discard');
   }
 
+  function renderKeepDiscardButtons(block, pendingState, code) {
+    const actions = block.querySelector('.ai-code-actions');
+    if (!actions) return;
+    actions.innerHTML = '';
+
+    const keepBtn = document.createElement('button');
+    keepBtn.className = 'btn ai-keep-btn';
+    keepBtn.textContent = '✓ Keep';
+    keepBtn.onclick = () => {
+      actions.innerHTML = '';
+      const done = document.createElement('span');
+      done.className = 'ai-applied-indicator';
+      done.textContent = '✓ Applied to ' + pendingState.originalFile.split('/').pop();
+      actions.appendChild(done);
+      toast('Change kept');
+    };
+
+    const discardBtn = document.createElement('button');
+    discardBtn.className = 'btn ai-discard-btn';
+    discardBtn.textContent = '✗ Discard';
+    discardBtn.onclick = () => {
+      if (pendingState.model.isDisposed && pendingState.model.isDisposed()) {
+        restoreApplyButton(actions, code);
+        return;
+      }
+
+      const userModified =
+        pendingState.model.getAlternativeVersionId() !== pendingState.appliedVersion;
+      if (userModified) {
+        const ok = confirm(
+          'You modified this file after applying. Discard will revert to the '
+          + 'original content and lose your edits. Continue?'
+        );
+        if (!ok) return;
+      }
+
+      pendingState.model.pushEditOperations(
+        [],
+        [{ range: pendingState.model.getFullModelRange(), text: pendingState.originalContent }],
+        () => null
+      );
+      pendingState.model.pushStackElement();
+
+      restoreApplyButton(actions, code);
+      toast('Change discarded');
+    };
+
+    actions.append(keepBtn, discardBtn);
+  }
+
+  function restoreApplyButton(actions, code) {
+    actions.innerHTML = '';
+    const applyBtn = document.createElement('button');
+    applyBtn.className = 'btn primary';
+    applyBtn.textContent = '⚡ Apply to Editor';
+    applyBtn.onclick = () => applyCodeAsSuggestion(code, applyBtn.closest('.ai-code-block'));
+    actions.appendChild(applyBtn);
+  }
+
+  // ─── Message rendering ─────────────────────────────────────
   function renderMessage(role, value, meta) {
     const container = get('aiMessages');
     if (!container) return null;
@@ -291,11 +376,14 @@
         block.className = 'ai-code-block';
         const pre = document.createElement('pre');
         pre.textContent = code;
-        const btn = document.createElement('button');
-        btn.className = 'btn primary';
-        btn.textContent = '⚡ Apply to Editor';
-        btn.onclick = () => applyCodeToEditor(code);
-        block.append(pre, btn);
+        const actions = document.createElement('div');
+        actions.className = 'ai-code-actions';
+        const applyBtn = document.createElement('button');
+        applyBtn.className = 'btn primary';
+        applyBtn.textContent = '⚡ Apply to Editor';
+        applyBtn.onclick = () => applyCodeAsSuggestion(code, block);
+        actions.appendChild(applyBtn);
+        block.append(pre, actions);
         div.appendChild(block);
       } else if (part) {
         const paragraph = document.createElement('div');
@@ -519,7 +607,6 @@
         if (checkbox.checked) {
           state.active = agent.id;
         } else {
-          // Single mode needs exactly one active agent; block the uncheck
           checkbox.checked = true;
           return;
         }
@@ -573,7 +660,6 @@
       const content = modal.querySelector('.modal-content');
       if (!content) return;
 
-      // Preserve legacy hidden inputs from the original HTML
       const legacyIds = ['aiProvider', 'aiApiKey', 'aiModel'];
       const legacyEls = legacyIds.map((id) => document.getElementById(id)).filter(Boolean);
 
@@ -723,15 +809,15 @@
       if (type === 'textarea') {
         input = document.createElement('textarea');
       } else if (type === 'select') {
-  input = document.createElement('select');
-  PROVIDER_ORDER.forEach((v) => {
-    if (!PRESETS[v]) return; // skip unknown keys defensively
-    const opt = document.createElement('option');
-    opt.value = v;
-    opt.textContent = LABELS[v] + (v === 'mock' ? ' (test)' : '');
-    input.appendChild(opt);
-  });
-} else {
+        input = document.createElement('select');
+        PROVIDER_ORDER.forEach((v) => {
+          if (!PRESETS[v]) return;
+          const opt = document.createElement('option');
+          opt.value = v;
+          opt.textContent = LABELS[v] + (v === 'mock' ? ' (test)' : '');
+          input.appendChild(opt);
+        });
+      } else {
         input = document.createElement('input');
         input.type = type;
       }
@@ -762,13 +848,11 @@
       const preset = PRESETS[inputs.provider.value];
       if (!preset) return;
 
-      // Only auto-fill baseUrl if the current value is empty or was a preset
       const allPresetBases = Object.values(PRESETS).map((p) => p[0]);
       if (!inputs.baseUrl.value || allPresetBases.includes(inputs.baseUrl.value)) {
         inputs.baseUrl.value = preset[0];
       }
 
-      // Only auto-fill model if empty or was a preset model
       const allPresetModels = Object.values(PRESETS).flatMap((p) => p[1]);
       if (!inputs.model.value || allPresetModels.includes(inputs.model.value)) {
         inputs.model.value = preset[1][0] || '';
@@ -814,7 +898,7 @@
       e.preventDefault();
       const candidate = collect();
       if (candidate.provider === 'custom' && !candidate.baseUrl) {
-        toast(' agents need a base URL.');
+        toast('Custom agents need a base URL.');
         return;
       }
       state.agents = state.agents.filter((a) => a.id !== candidate.id);
@@ -835,19 +919,19 @@
       console.error('[ai-agents] Failed to load state', err);
       return;
     }
-      attached = true;
-  renderToolbar();
-  const settingsBtn = get('btnAISettings');
-  if (settingsBtn) settingsBtn.addEventListener('click', () => openModal('agents'));
-  const sendBtn = get('btnSendAI');
-  if (sendBtn) sendBtn.addEventListener('click', send);
-  const aiInput = get('aiInput');
-  if (aiInput) {
-    aiInput.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
-    });
+    attached = true;
+    renderToolbar();
+    const settingsBtn = get('btnAISettings');
+    if (settingsBtn) settingsBtn.addEventListener('click', () => openModal('agents'));
+    const sendBtn = get('btnSendAI');
+    if (sendBtn) sendBtn.addEventListener('click', send);
+    const aiInput = get('aiInput');
+    if (aiInput) {
+      aiInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
+      });
+    }
   }
-}
 
   // ─── Public API ────────────────────────────────────────────
   window.AIAgents = {
@@ -857,6 +941,5 @@
     renderMessage: (role, value, meta) => renderMessage(role, value, meta)
   };
 
-  // script.js may have loaded us before it could call attach()
   if (window.__aiAttachOptions) attach(window.__aiAttachOptions);
 }());
