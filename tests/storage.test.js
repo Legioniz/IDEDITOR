@@ -258,3 +258,51 @@ test('failed IndexedDB open keeps the legacy backup untouched and loads it throu
   assert.deepEqual(loaded.projects, legacy.projects);
   assert.notEqual(localStorage.getItem('idEditor.projectsData'), null);
 });
+
+
+test('legacy recovery merges missing projects and keeps the newest project version', async () => {
+  const indexedDB = new FakeIndexedDB();
+  const localStorage = makeLocalStorage();
+  const initialStorage = new IDEditorProjectStorage({ indexedDB, localStorage });
+  await initialStorage.open();
+  await initialStorage.saveAll({
+    current: { name: 'Current DB copy', updatedAt: 300, files: { 'index.html': { content: 'database-newer' } } },
+    shared: { name: 'Shared DB copy', updatedAt: 100, files: { 'index.html': { content: 'database-older' } } }
+  }, 'current');
+
+  const legacy = {
+    currentProjectId: 'shared',
+    projects: {
+      current: { name: 'Stale backup copy', updatedAt: 200, files: { 'index.html': { content: 'backup-older' } } },
+      shared: { name: 'Newer backup copy', updatedAt: 200, files: { 'index.html': { content: 'backup-newer' } } },
+      recovered: { name: 'Recovered project', updatedAt: 250, files: { 'notes.md': { content: 'not lost' } } }
+    }
+  };
+  localStorage.setItem('idEditor.projectsData', JSON.stringify(legacy));
+
+  const recovered = await new IDEditorProjectStorage({ indexedDB, localStorage }).open();
+  assert.equal(recovered.projects.current.files['index.html'].content, 'database-newer');
+  assert.equal(recovered.projects.shared.files['index.html'].content, 'backup-newer');
+  assert.equal(recovered.projects.recovered.files['notes.md'].content, 'not lost');
+  assert.equal(recovered.currentProjectId, 'current');
+  assert.equal(localStorage.getItem('idEditor.projectsData'), null);
+});
+
+test('saveAll upserts projects without erasing records absent from a stale tab snapshot', async () => {
+  const indexedDB = new FakeIndexedDB();
+  const storage = new IDEditorProjectStorage({ indexedDB, localStorage: makeLocalStorage() });
+  await storage.open();
+  await storage.saveAll({
+    first: { name: 'First', updatedAt: 1 },
+    second: { name: 'Second', updatedAt: 2 }
+  }, 'first');
+
+  // Simulate another tab adding a project after this tab loaded its snapshot.
+  await storage.saveProject('other-tab', { name: 'Created in another tab', updatedAt: 3 }, 'other-tab');
+  await storage.saveAll({ first: { name: 'First updated', updatedAt: 4 } }, 'first');
+
+  const loaded = await new IDEditorProjectStorage({ indexedDB, localStorage: makeLocalStorage() }).open();
+  assert.equal(loaded.projects.first.name, 'First updated');
+  assert.equal(loaded.projects.second.name, 'Second');
+  assert.equal(loaded.projects['other-tab'].name, 'Created in another tab');
+});
