@@ -147,6 +147,7 @@
     async _getAllRecords() {
       const transaction = this.db.transaction([PROJECT_STORE], 'readonly');
       const done = transactionResult(transaction);
+      done.catch(() => {});
       const records = await requestResult(transaction.objectStore(PROJECT_STORE).getAll());
       await done;
       return records;
@@ -156,6 +157,7 @@
       await this.writeQueue;
       const transaction = this.db.transaction([PROJECT_STORE, META_STORE], 'readonly');
       const done = transactionResult(transaction);
+      done.catch(() => {});
       const recordsRequest = transaction.objectStore(PROJECT_STORE).getAll();
       const orderRequest = transaction.objectStore(META_STORE).get('projectOrder');
       const currentRequest = transaction.objectStore(META_STORE).get('currentProjectId');
