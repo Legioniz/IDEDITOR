@@ -138,7 +138,8 @@ test('preview CSP blocks external network requests and embeds project resources'
 
 test('PWA caches the application shell and declares a scalable icon', () => {
   assert.match(worker, /cache\.addAll\(SHELL_ASSETS\)/);
-  assert.match(worker, /ideditor-shell-v2/);
+  assert.match(worker, /ideditor-shell-v3/);
+  assert.match(worker, /project-storage\\.js/);
   assert.equal(manifest.icons[0].src, './icon.svg');
   assert.equal(manifest.icons[0].sizes, 'any');
 });
