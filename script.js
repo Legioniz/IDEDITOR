@@ -112,13 +112,19 @@ function saveProjectsToStorage(projectIds) {
 function saveCurrentProjectFiles() {
   if (!currentProjectId || !projectsData[currentProjectId]) return Promise.resolve(false);
   const projectId = currentProjectId;
-  const data = {};
+  // Keep the workspace file map as the source of truth. Only loaded Monaco
+  // models need synchronization; unloaded files remain intact on autosave.
+  const data = FILES && currentProjectId === projectId
+    ? FILES
+    : (projectsData[projectId].files || {});
   Object.keys(models).forEach(k => {
+    if (!Object.prototype.hasOwnProperty.call(data, k)) return;
     const content = models[k].getValue();
     data[k] = { lang: models[k].getLanguageId() || langFromFilename(k), content };
     savedSnapshot[k] = content;
   });
   projectsData[projectId].files = data;
+  if (currentProjectId === projectId) FILES = data;
   projectsData[projectId].updatedAt = Date.now();
   hasPendingSave = false;
   Object.keys(models).forEach(markDirtyState);
@@ -238,9 +244,8 @@ function switchProject(id) {
     FILES['index.html'] = { lang: 'html', content: DEFAULT_HTML };
     filesList.push('index.html');
   }
-  filesList.forEach(ensureModel);
-  
   activeFile = filesList[0];
+  ensureModel(activeFile);
   renderTabs(); renderSidebarFiles(); switchFile(activeFile);
   saveProjectsToStorage();
   
@@ -574,7 +579,7 @@ function initEditor() {
   
   if (!filesList.length) filesList = ['index.html'];
   if (!filesList.includes(activeFile)) activeFile = filesList[0];
-  filesList.forEach(ensureModel);
+  ensureModel(activeFile);
 
   editor = monaco.editor.create(document.getElementById('editor'), {
     model: models[activeFile], theme: currentTheme, fontSize: fontSize,
@@ -590,8 +595,6 @@ function initEditor() {
 
   renderTabs(); renderSidebarFiles();
   wireFindBar(); wireRun(); wireConsole(); wireClipboard(); wireSettings(); wirePreviewControls(); wireSidebar(); wireMobileActions(); wireTier1Features(); setupSaveFlush(); wireGitUI(); wireProjectsUI(); wireAI();
-  Object.values(models).forEach(m => window.__hookAutoRun && window.__hookAutoRun(m));
-
   editor.addAction({ id: 'custom-open-find', label: 'Find', keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyF], run: openFindBar });
   editor.addAction({ id: 'custom-run-kb', label: 'Run', keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter], run: run });
 
@@ -629,8 +632,9 @@ function wireTier1Features() {
       if (models[file.name]) { models[file.name].dispose(); delete models[file.name]; }
       FILES[file.name] = { lang: langFromFilename(file.name), content: await file.text() };
       if (!filesList.includes(file.name)) filesList.push(file.name);
-      ensureModel(file.name); if (!firstImported) firstImported = file.name;
+      if (!firstImported) firstImported = file.name;
     }
+    if (firstImported) ensureModel(firstImported);
     renderTabs(); renderSidebarFiles(); if (firstImported) switchFile(firstImported);
     saveCurrentProjectFiles(); showToast('Imported files'); e.target.value = '';
   });
@@ -670,17 +674,37 @@ function wireTier1Features() {
    STATUS, SAVE, RENDER
    ========================================================= */
 function updateStatusFont() { const el = document.getElementById('statusFont'); if (el) el.textContent = fontSize + 'px'; }
-function findTabEl(name) { return Array.from(document.querySelectorAll('.tab')).find(t => t.dataset.file === name) || null; }
-function findSideItemEl(name) { return Array.from(document.querySelectorAll('.side-item[data-file]')).find(t => t.dataset.file === name) || null; }
+
+const tabElements = new Map();
+const sidebarFileElements = new Map();
+function findTabEl(name) { return tabElements.get(name) || null; }
+function findSideItemEl(name) { return sidebarFileElements.get(name) || null; }
 
 function markDirtyState(file) {
-  const dirty = (savedSnapshot[file] || '') !== (models[file] ? models[file].getValue() : '');
-  const tab = findTabEl(file); if (tab) tab.classList.toggle('dirty', dirty);
-  const item = findSideItemEl(file); if (item) item.classList.toggle('dirty', dirty);
+  const currentContent = models[file] ? models[file].getValue() : readProjectFile(file);
+  const baseline = Object.prototype.hasOwnProperty.call(savedSnapshot, file)
+    ? savedSnapshot[file]
+    : currentContent;
+  const dirty = baseline !== currentContent;
+  const tab = findTabEl(file);
+  const item = findSideItemEl(file);
+  if (tab) tab.classList.toggle('dirty', dirty);
+  if (item) item.classList.toggle('dirty', dirty);
 }
 
-let saveTimer = null, hasPendingSave = false;
-function scheduleSave() { hasPendingSave = true; clearTimeout(saveTimer); saveTimer = setTimeout(saveCurrentProjectFiles, 500); }
+let saveTimer = null, hasPendingSave = false, sidebarRenderTimer = null;
+function scheduleSave() {
+  hasPendingSave = true;
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(saveCurrentProjectFiles, 650);
+}
+function scheduleSidebarRender() {
+  clearTimeout(sidebarRenderTimer);
+  sidebarRenderTimer = setTimeout(() => {
+    sidebarRenderTimer = null;
+    renderSidebarFiles();
+  }, 90);
+}
 function setupSaveFlush() {
   const flushPendingProjectSave = () => {
     if (hasPendingSave) saveCurrentProjectFiles();
@@ -693,75 +717,131 @@ function setupSaveFlush() {
 }
 
 function renderTabs() {
-  const nav = document.getElementById('tabs'); nav.innerHTML = '';
+  const nav = document.getElementById('tabs');
+  const fragment = document.createDocumentFragment();
+  tabElements.clear();
   filesList.forEach(name => {
     const btn = document.createElement('button');
     btn.className = 'tab' + (name === activeFile ? ' active' : '');
-    btn.dataset.file = name; btn.textContent = basename(name); btn.title = name;
-    attachFileMenuHandlers(btn, name); nav.appendChild(btn);
+    btn.dataset.file = name;
+    btn.textContent = basename(name);
+    btn.title = name;
+    attachFileMenuHandlers(btn, name);
+    tabElements.set(name, btn);
+    fragment.appendChild(btn);
   });
-  
-  // Preview tab removed — preview is triggered via Run button or file context menu
 
-  const addBtn = document.createElement('button'); addBtn.className = 'tab-add'; addBtn.title = 'New file'; addBtn.textContent = '+';
-  addBtn.addEventListener('click', promptNewFile); nav.appendChild(addBtn);
-  filesList.forEach(markDirtyState);
+  const addBtn = document.createElement('button');
+  addBtn.className = 'tab-add';
+  addBtn.title = 'New file';
+  addBtn.textContent = '+';
+  addBtn.addEventListener('click', promptNewFile);
+  fragment.appendChild(addBtn);
+  nav.replaceChildren(fragment);
+  tabElements.forEach((_, name) => markDirtyState(name));
 }
 
 let foldersInitialized = false;
 const expandedFolders = new Set();
 function renderSidebarFiles() {
+  if (sidebarRenderTimer) {
+    clearTimeout(sidebarRenderTimer);
+    sidebarRenderTimer = null;
+  }
   if (!foldersInitialized && filesList.length > 0) {
-    filesList.forEach(f => {
-      const parts = f.split('/'); let currentPath = '';
-      for (let i = 0; i < parts.length - 1; i++) { currentPath = currentPath ? `${currentPath}/${parts[i]}` : parts[i]; expandedFolders.add(currentPath); }
-    });
+    const activeParts = activeFile.split('/');
+    let currentPath = '';
+    for (let i = 0; i < activeParts.length - 1; i++) {
+      currentPath = currentPath ? currentPath + '/' + activeParts[i] : activeParts[i];
+      expandedFolders.add(currentPath);
+    }
     foldersInitialized = true;
   }
-  const list = document.getElementById('sideFiles'); list.innerHTML = '';
+
+  const list = document.getElementById('sideFiles');
+  const fragment = document.createDocumentFragment();
+  sidebarFileElements.clear();
   const filter = (document.getElementById('fileFilter')?.value || '').trim().toLowerCase();
-  const visibleFiles = filter ? filesList.filter(name => name.toLowerCase().includes(filter)) : filesList;
+  const filtering = Boolean(filter);
+  const visibleFiles = filtering
+    ? filesList.filter(name => name.toLowerCase().includes(filter))
+    : filesList;
   const tree = {};
+
   visibleFiles.forEach(path => {
-    const parts = path.split('/'); let current = tree;
-    parts.forEach((part, i) => { if (!current[part]) current[part] = (i === parts.length - 1) ? 'FILE' : {}; current = current[part]; });
+    const parts = path.split('/');
+    let current = tree;
+    parts.forEach((part, i) => {
+      if (!current[part]) current[part] = (i === parts.length - 1) ? 'FILE' : {};
+      current = current[part];
+    });
   });
 
   function buildNode(node, path, container) {
     const keys = Object.keys(node).sort((a, b) => {
-      const aIsFile = node[a] === 'FILE'; const bIsFile = node[b] === 'FILE';
-      if (aIsFile && !bIsFile) return 1; if (!aIsFile && bIsFile) return -1; return a.localeCompare(b);
+      const aIsFile = node[a] === 'FILE';
+      const bIsFile = node[b] === 'FILE';
+      if (aIsFile && !bIsFile) return 1;
+      if (!aIsFile && bIsFile) return -1;
+      return a.localeCompare(b);
     });
+
     keys.forEach(key => {
-      const fullPath = path ? `${path}/${key}` : key;
+      const fullPath = path ? path + '/' + key : key;
       if (node[key] === 'FILE') {
         const btn = document.createElement('button');
         btn.className = 'side-item' + (fullPath === activeFile ? ' active' : '');
         btn.dataset.file = fullPath;
         btn.innerHTML = '<svg viewBox="0 0 24 24" width="15" height="15"><path d="M6 3h9l4 4v14a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z" stroke="currentColor" stroke-width="1.8" fill="none"/><path d="M14 3v5h5" stroke="currentColor" stroke-width="1.8" fill="none"/></svg><span>' + escapeHtml(key) + '</span>';
         attachFileMenuHandlers(btn, fullPath, () => { switchFile(fullPath); if (isMobile()) closeSidebar(); });
+        sidebarFileElements.set(fullPath, btn);
         container.appendChild(btn);
-      } else {
-        const folderDiv = document.createElement('div');
-        const isExpanded = expandedFolders.has(fullPath);
-        const folderHeader = document.createElement('div');
-        folderHeader.className = 'tree-folder' + (isExpanded ? '' : ' collapsed');
-        folderHeader.innerHTML = `<svg viewBox="0 0 24 24" width="14" height="14"><path d="M9 18l6-6-6-6" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg><span>${escapeHtml(key)}</span>`;
-        const childrenContainer = document.createElement('div');
-        childrenContainer.className = 'tree-folder-children' + (isExpanded ? '' : ' hidden');
-        folderHeader.addEventListener('click', () => {
-          const nowCollapsed = !childrenContainer.classList.contains('hidden');
-          childrenContainer.classList.toggle('hidden', nowCollapsed); folderHeader.classList.toggle('collapsed', nowCollapsed);
-          if (nowCollapsed) expandedFolders.delete(fullPath); else expandedFolders.add(fullPath);
-        });
-        folderDiv.appendChild(folderHeader); folderDiv.appendChild(childrenContainer); container.appendChild(folderDiv);
-        buildNode(node[key], fullPath, childrenContainer);
+        markDirtyState(fullPath);
+        return;
       }
+
+      const folderDiv = document.createElement('div');
+      const isExpanded = filtering || expandedFolders.has(fullPath);
+      const folderHeader = document.createElement('div');
+      folderHeader.className = 'tree-folder' + (isExpanded ? '' : ' collapsed');
+      folderHeader.setAttribute('aria-expanded', String(isExpanded));
+      folderHeader.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14"><path d="M9 18l6-6-6-6" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg><span>' + escapeHtml(key) + '</span>';
+      const childrenContainer = document.createElement('div');
+      childrenContainer.className = 'tree-folder-children' + (isExpanded ? '' : ' hidden');
+      const renderChildren = () => {
+        if (childrenContainer.dataset.rendered === 'true') return;
+        buildNode(node[key], fullPath, childrenContainer);
+        childrenContainer.dataset.rendered = 'true';
+      };
+
+      if (isExpanded) renderChildren();
+      folderHeader.addEventListener('click', () => {
+        const expand = childrenContainer.classList.contains('hidden');
+        childrenContainer.classList.toggle('hidden', !expand);
+        folderHeader.classList.toggle('collapsed', !expand);
+        folderHeader.setAttribute('aria-expanded', String(expand));
+        if (expand) {
+          expandedFolders.add(fullPath);
+          renderChildren();
+        } else {
+          expandedFolders.delete(fullPath);
+        }
+      });
+      folderDiv.appendChild(folderHeader);
+      folderDiv.appendChild(childrenContainer);
+      container.appendChild(folderDiv);
     });
   }
-  if (visibleFiles.length) buildNode(tree, '', list);
-  else { const empty = document.createElement('div'); empty.className = 'file-filter-empty'; empty.textContent = 'No matching files'; list.appendChild(empty); }
-  filesList.forEach(markDirtyState);
+
+  if (visibleFiles.length) buildNode(tree, '', fragment);
+  else {
+    const empty = document.createElement('div');
+    empty.className = 'file-filter-empty';
+    empty.textContent = 'No matching files';
+    fragment.appendChild(empty);
+  }
+  list.replaceChildren(fragment);
+  sidebarFileElements.forEach((_, name) => markDirtyState(name));
 }
 
 let tabMenuEl = null, tabMenuFile = null;
@@ -863,7 +943,7 @@ function promptNewFolder() {
   if (!folder) return showToast('Invalid name');
   const placeholder = `${folder}/.gitkeep`;
   if (FILES[placeholder]) return showToast('Folder already exists');
-  FILES[placeholder] = { lang: 'plaintext', content: '' }; filesList.push(placeholder); ensureModel(placeholder);
+  FILES[placeholder] = { lang: 'plaintext', content: '' }; filesList.push(placeholder);
   const parts = folder.split('/'); let currentPath = '';
   parts.forEach(p => { currentPath = currentPath ? `${currentPath}/${p}` : p; expandedFolders.add(currentPath); });
   renderTabs(); renderSidebarFiles(); saveCurrentProjectFiles(); showToast('Created folder ' + folder);
@@ -871,22 +951,31 @@ function promptNewFolder() {
 function renameFile(oldName, newName) {
   newName = (newName || '').trim().replace(/^\/+/, '').replace(/[\\:*?"<>|\x00-\x1F]/g, '');
   if (!newName) return showToast('Invalid name'); if (newName === oldName) return; if (FILES[newName]) return showToast('File already exists');
-  const oldModel = models[oldName], oldContent = oldModel ? oldModel.getValue() : '', newLang = langFromFilename(newName);
-  if (oldModel) oldModel.dispose(); delete models[oldName];
-  FILES[newName] = { lang: newLang, content: oldContent }; delete FILES[oldName];
-  savedSnapshot[newName] = savedSnapshot[oldName] || oldContent; delete savedSnapshot[oldName];
-  filesList = filesList.map(n => n === oldName ? newName : n); if (activeFile === oldName) activeFile = newName;
-  const newModel = monaco.editor.createModel(oldContent, newLang, makeUri(newName));
-  models[newName] = newModel; newModel.onDidChangeContent(() => { markDirtyState(newName); scheduleSave(); });
-  if (window.__hookAutoRun) window.__hookAutoRun(newModel);
-  renderTabs(); renderSidebarFiles(); switchFile(activeFile); saveCurrentProjectFiles(); showToast('Renamed to ' + newName);
+  const oldModel = models[oldName];
+  const oldMeta = FILES[oldName];
+  const oldContent = oldModel ? oldModel.getValue() : (typeof oldMeta === 'string' ? oldMeta : (oldMeta && oldMeta.content) || '');
+  const newLang = langFromFilename(newName);
+  if (oldModel) oldModel.dispose();
+  delete models[oldName];
+  FILES[newName] = { lang: newLang, content: oldContent };
+  delete FILES[oldName];
+  if (Object.prototype.hasOwnProperty.call(savedSnapshot, oldName)) savedSnapshot[newName] = savedSnapshot[oldName];
+  else savedSnapshot[newName] = oldContent;
+  delete savedSnapshot[oldName];
+  filesList = filesList.map(n => n === oldName ? newName : n);
+  if (activeFile === oldName) activeFile = newName;
+  renderTabs(); renderSidebarFiles();
+  if (activeFile === newName) ensureModel(newName);
+  switchFile(activeFile);
+  saveCurrentProjectFiles();
+  showToast('Renamed to ' + newName);
 }
 function deleteFile(name) {
   if (filesList.length <= 1) return showToast('Cannot delete the last file');
   if (!confirm('Delete "' + name + '"?')) return;
   if (models[name]) { models[name].dispose(); delete models[name]; }
   delete FILES[name]; delete savedSnapshot[name]; filesList = filesList.filter(n => n !== name);
-  if (activeFile === name) { activeFile = filesList[0]; editor.setModel(models[activeFile]); }
+  if (activeFile === name) activeFile = filesList[0];
   renderTabs(); renderSidebarFiles(); switchFile(activeFile); saveCurrentProjectFiles(); showToast('Deleted ' + name);
 }
 
@@ -902,8 +991,13 @@ function wireSidebar() {
   document.getElementById('btnNewFile').addEventListener('click', promptNewFile);
   document.getElementById('btnNewFolder').addEventListener('click', promptNewFolder);
   const fileFilter = document.getElementById('fileFilter');
-  fileFilter.addEventListener('input', renderSidebarFiles);
-  fileFilter.addEventListener('keydown', e => { if (e.key === 'Escape' && fileFilter.value) { fileFilter.value = ''; renderSidebarFiles(); }});
+  fileFilter.addEventListener('input', scheduleSidebarRender);
+  fileFilter.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && fileFilter.value) {
+      fileFilter.value = '';
+      renderSidebarFiles();
+    }
+  });
   
   document.getElementById('btnReset').addEventListener('click', () => { 
     if (!confirm('Reset ALL projects and settings? This cannot be undone.')) return; 
@@ -928,18 +1022,49 @@ function wireSidebar() {
 }
 
 function switchFile(file) {
-  if (file !== 'preview' && !models[file]) return;
+  if (file !== 'preview' && !Object.prototype.hasOwnProperty.call(FILES, file)) return;
+
+  if (file !== 'preview') {
+    let currentPath = '';
+    const parts = file.split('/');
+    let shouldRenderTree = false;
+    for (let i = 0; i < parts.length - 1; i++) {
+      currentPath = currentPath ? currentPath + '/' + parts[i] : parts[i];
+      if (!expandedFolders.has(currentPath)) {
+        expandedFolders.add(currentPath);
+        shouldRenderTree = true;
+      }
+    }
+    if (shouldRenderTree) renderSidebarFiles();
+    ensureModel(file);
+  }
+
+  const previousFile = activeFile;
+  if (previousFile !== file) {
+    const oldTab = findTabEl(previousFile);
+    const oldItem = findSideItemEl(previousFile);
+    if (oldTab) oldTab.classList.remove('active');
+    if (oldItem) oldItem.classList.remove('active');
+  }
   activeFile = file;
-  document.querySelectorAll('.tab').forEach(b => b.classList.toggle('active', b.dataset.file === file));
-  document.querySelectorAll('.side-item[data-file]').forEach(b => b.classList.toggle('active', b.dataset.file === file));
+  const currentTab = findTabEl(file);
+  const currentItem = findSideItemEl(file);
+  if (currentTab) currentTab.classList.add('active');
+  if (currentItem) currentItem.classList.add('active');
+
   const panes = document.getElementById('panes'), outputPane = document.getElementById('outputPane');
   if (file === 'preview') {
     panes.classList.add('preview-tab-mode'); outputPane.classList.add('show');
-    document.getElementById('editor').style.display = 'none'; document.getElementById('statusFile').textContent = 'Preview'; run();
+    document.getElementById('editor').style.display = 'none';
+    document.getElementById('statusFile').textContent = 'Preview';
+    run();
   } else {
-    panes.classList.remove('preview-tab-mode'); document.getElementById('editor').style.display = 'block';
-    editor.setModel(models[file]); document.getElementById('statusFile').textContent = basename(file);
-    clearDecorations(); if (findbar.classList.contains('show')) refreshMatches();
+    panes.classList.remove('preview-tab-mode');
+    document.getElementById('editor').style.display = 'block';
+    editor.setModel(models[file]);
+    document.getElementById('statusFile').textContent = basename(file);
+    clearDecorations();
+    if (findbar.classList.contains('show')) refreshMatches();
   }
 }
 
@@ -968,7 +1093,7 @@ function wireClipboard() {
   document.getElementById('btnSelectAll').addEventListener('click', () => { editor.setSelection(editor.getModel().getFullModelRange()); });
   document.getElementById('btnShare').addEventListener('click', async () => {
     if (typeof LZString === 'undefined') return showToast('Share unavailable');
-    const data = {}; Object.keys(models).forEach(k => { data[k] = models[k].getValue(); });
+    const data = collectWorkspaceFiles();
     const compressed = LZString.compressToEncodedURIComponent(JSON.stringify(data));
     const ok = await writeClipboardAsync(location.origin + location.pathname + '#s=' + compressed); showToast(ok ? 'Share link copied' : 'Copy failed', 1600);
   });
@@ -1029,7 +1154,8 @@ async function formatCurrent() {
 async function downloadZip() {
   try {
     if (!window.JSZip) await loadScript('https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js');
-    const zip = new window.JSZip(); Object.keys(models).forEach(k => zip.file(k, models[k].getValue()));
+    const zip = new window.JSZip();
+    Object.entries(collectWorkspaceFiles()).forEach(([path, content]) => zip.file(path, content));
     const blob = await zip.generateAsync({ type: 'blob' }), url = URL.createObjectURL(blob), a = document.createElement('a');
     a.href = url; a.download = `${projectsData[currentProjectId].name.replace(/\s+/g, '-')}.zip`; document.body.appendChild(a); a.click(); document.body.removeChild(a);
     setTimeout(() => URL.revokeObjectURL(url), 60000); showToast('Downloaded');
@@ -1173,9 +1299,9 @@ async function executeCommand(raw) {
     case 'help': addTermLine('Available: clear, ls, cat, touch, mkdir, run, format, git clone, git commit, git pull, git push, firebase save/load, theme', 'info'); break;
     case 'clear': termOutput.innerHTML = ''; break;
     case 'ls': addTermLine(filesList.join('    ')); break;
-    case 'cat': if (!args[1] || !models[args[1]]) return addTermLine('File not found', 'error'); addTermLine(models[args[1]].getValue()); break;
-    case 'touch': if (!args[1]) return addTermLine('Usage: touch <file>', 'error'); if (FILES[args[1]]) return addTermLine('Exists', 'error'); FILES[args[1]] = { lang: langFromFilename(args[1]), content: '' }; filesList.push(args[1]); ensureModel(args[1]); renderTabs(); renderSidebarFiles(); saveCurrentProjectFiles(); addTermLine(`Created ${args[1]}`, 'success'); break;
-    case 'mkdir': if (!args[1]) return addTermLine('Usage: mkdir <folder>', 'error'); const placeholder = `${args[1]}/.gitkeep`; if (FILES[placeholder]) return addTermLine('Exists', 'error'); FILES[placeholder] = { lang: 'plaintext', content: '' }; filesList.push(placeholder); ensureModel(placeholder); renderTabs(); renderSidebarFiles(); saveCurrentProjectFiles(); addTermLine(`Created folder`, 'success'); break;
+    case 'cat': if (!args[1] || !Object.prototype.hasOwnProperty.call(FILES, args[1])) return addTermLine('File not found', 'error'); addTermLine(readProjectFile(args[1])); break;
+    case 'touch': if (!args[1]) return addTermLine('Usage: touch <file>', 'error'); if (FILES[args[1]]) return addTermLine('Exists', 'error'); FILES[args[1]] = { lang: langFromFilename(args[1]), content: '' }; filesList.push(args[1]); renderTabs(); renderSidebarFiles(); saveCurrentProjectFiles(); addTermLine(`Created ${args[1]}`, 'success'); break;
+    case 'mkdir': if (!args[1]) return addTermLine('Usage: mkdir <folder>', 'error'); const placeholder = `${args[1]}/.gitkeep`; if (FILES[placeholder]) return addTermLine('Exists', 'error'); FILES[placeholder] = { lang: 'plaintext', content: '' }; filesList.push(placeholder); renderTabs(); renderSidebarFiles(); saveCurrentProjectFiles(); addTermLine(`Created folder`, 'success'); break;
     case 'run': run(); addTermLine('Preview triggered', 'success'); break;
     case 'format': await formatCurrent(); break;
     case 'theme': if (args[1]) { applyTheme(args[1]); addTermLine(`Theme set to ${args[1]}`, 'success'); } else addTermLine('Usage: theme <vs-dark|vs|dracula|monokai>', 'error'); break;
@@ -1209,11 +1335,28 @@ window.addEventListener('message', (event) => {
   addConsoleLine(data.type, data.msg.slice(0, 5000));
 });
 
-function buildDoc(html, css, js) {
-  return window.IDEditorCore.buildPreviewDocument(html, css, js);
+function readProjectFile(path) {
+  const model = models[path];
+  if (model) return model.getValue();
+  const meta = FILES[path];
+  return typeof meta === 'string' ? meta : (meta && meta.content != null ? String(meta.content) : '');
 }
 
-function run() { if (!editor) return; clearConsole(); document.getElementById('outputPane').classList.add('show'); document.getElementById('preview').srcdoc = buildDoc(models['index.html'] ? models['index.html'].getValue() : '', models['style.css'] ? models['style.css'].getValue() : '', models['script.js'] ? models['script.js'].getValue() : '', collectWorkspaceFiles()); }
+function buildDoc(html, css, js, workspaceFiles) {
+  return window.IDEditorCore.buildPreviewDocument(html, css, js, workspaceFiles || collectWorkspaceFiles());
+}
+
+function run() {
+  if (!editor) return;
+  clearConsole();
+  document.getElementById('outputPane').classList.add('show');
+  document.getElementById('preview').srcdoc = buildDoc(
+    readProjectFile('index.html'),
+    readProjectFile('style.css'),
+    readProjectFile('script.js'),
+    collectWorkspaceFiles()
+  );
+}
 
 function wirePreviewControls() {
   const outputPane = document.getElementById('outputPane'), btnFullscreen = document.getElementById('btnFullscreen'), btnOpen = document.getElementById('btnOpen'), btnAuto = document.getElementById('btnAuto'), btnClose = document.getElementById('btnClosePreview');
@@ -1223,9 +1366,9 @@ function wirePreviewControls() {
   document.addEventListener('keydown', e => { if (e.key === 'Escape' && outputPane.classList.contains('fullscreen')) setFullscreen(false); });
   btnOpen.addEventListener('click', () => {
     const html = buildDoc(
-      models['index.html'] ? models['index.html'].getValue() : '',
-      models['style.css'] ? models['style.css'].getValue() : '',
-      models['script.js'] ? models['script.js'].getValue() : '',
+      readProjectFile('index.html'),
+      readProjectFile('style.css'),
+      readProjectFile('script.js'),
       collectWorkspaceFiles()
     );
     const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
@@ -1312,6 +1455,9 @@ async function handleGitCommand(args) {
 
 function collectWorkspaceFiles() {
   const snapshot = {};
+  Object.entries(FILES || {}).forEach(([path, meta]) => {
+    snapshot[path] = typeof meta === 'string' ? meta : (meta && meta.content != null ? String(meta.content) : '');
+  });
   Object.entries(models).forEach(([path, model]) => { snapshot[path] = model.getValue(); });
   return snapshot;
 }
