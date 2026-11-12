@@ -66,6 +66,10 @@ function loadProjectsData() {
     currentProjectId = Object.keys(projectsData)[0];
   }
 
+  Object.keys(projectsData).forEach((id) => {
+    const project = projectsData[id];
+    project.files = window.IDEditorCore.normalizeProjectFiles(project.files || {});
+  });
   FILES = projectsData[currentProjectId].files;
   filesList = Object.keys(FILES);
 }
@@ -82,7 +86,11 @@ function saveProjectsToStorage() {
 function saveCurrentProjectFiles() {
   if (!currentProjectId || !projectsData[currentProjectId]) return;
   const data = {};
-  Object.keys(models).forEach(k => { data[k] = models[k].getValue(); savedSnapshot[k] = data[k]; });
+  Object.keys(models).forEach(k => {
+    const content = models[k].getValue();
+    data[k] = { lang: models[k].getLanguageId() || langFromFilename(k), content };
+    savedSnapshot[k] = content;
+  });
   projectsData[currentProjectId].files = data;
   projectsData[currentProjectId].updatedAt = Date.now();
   saveProjectsToStorage();
@@ -141,17 +149,33 @@ function renderProjectsDashboard() {
 }
 
 function deleteProject(id) {
+  if (!Object.prototype.hasOwnProperty.call(projectsData, id)) return;
+  const wasActive = currentProjectId === id;
+  if (wasActive) saveCurrentProjectFiles();
   delete projectsData[id];
-  if (currentProjectId === id) {
-    currentProjectId = Object.keys(projectsData)[0];
-    if (currentProjectId) switchProject(currentProjectId);
-    else location.reload();
+
+  if (wasActive) {
+    // Prevent switchProject from saving the deleted project's models into its replacement.
+    currentProjectId = null;
+    const nextId = window.IDEditorCore.nextProjectIdAfterRemoval(projectsData, id);
+    if (nextId) switchProject(nextId);
+    else {
+      const replacementId = generateId();
+      projectsData[replacementId] = {
+        name: 'My First Project',
+        files: JSON.parse(JSON.stringify(DEFAULT_FILES)),
+        updatedAt: Date.now()
+      };
+      switchProject(replacementId);
+    }
+  } else {
+    saveProjectsToStorage();
   }
-  saveProjectsToStorage();
   renderProjectsDashboard();
 }
 
 function switchProject(id) {
+  if (!projectsData[id]) return;
   saveCurrentProjectFiles();
   currentProjectId = id;
   const proj = projectsData[id];
@@ -205,33 +229,35 @@ function wireProjectsUI() {
     if (name && name.trim()) createNewProject(name.trim());
   });
 
-  document.getElementById('btnDashboardCloneProject').addEventListener('click', () => {
+  document.getElementById('btnDashboardCloneProject').addEventListener('click', async () => {
     const url = prompt('Enter GitHub Repository URL (e.g., https://github.com/octocat/Hello-World.git):');
     if (!url || !url.trim()) return;
-    
-    const token = localStorage.getItem(GIT_TOKEN_KEY);
-    if (!token) {
-      alert('You need a Personal Access Token (PAT) to clone. Please set it in the Git Settings (Gear icon in sidebar) first.');
-      return;
-    }
+    const normalizedUrl = url.trim();
+    const parsed = parseGitHubUrl(normalizedUrl);
+    if (!parsed) return showToast('Enter a valid HTTPS GitHub repository URL');
 
-    const repoName = url.split('/').pop().replace('.git', '');
-    const newProjName = prompt('Enter project name for the clone:', repoName);
-    if (!newProjName) return;
+    const newProjName = prompt('Enter project name for the clone:', parsed.repo);
+    if (!newProjName || !newProjName.trim()) return;
 
-    const id = generateId();
-    projectsData[id] = { name: newProjName, files: {}, updatedAt: Date.now() };
-    switchProject(id);
+    // Public repositories can be cloned without a PAT. Private repositories use
+    // the volatile token configured in Git Settings.
+    localStorage.setItem(GIT_URL_KEY, normalizedUrl);
+    document.getElementById('gitRepoUrl').value = normalizedUrl;
+    await updateGitStatus();
+
+    createNewProject(newProjName.trim());
     closeProjectsDashboard();
-    
-    localStorage.setItem(GIT_URL_KEY, url);
-    document.getElementById('gitRepoUrl').value = url;
-    
     bottomPanel.classList.remove('hidden');
     setActivePanel('terminal');
-    addTermLine(`$ git clone ${url}`, '');
-    
-    gitClone().then(() => addTermLine('Clone successful', 'success')).catch(err => addTermLine('Clone failed: ' + err.message, 'error'));
+    addTermLine('$ git clone ' + normalizedUrl, '');
+    try {
+      const cloned = await gitClone({ replace: true });
+      if (cloned) addTermLine('Clone successful', 'success');
+    } catch (error) {
+      addTermLine('Clone failed: ' + (error.message || error), 'error');
+      showToast('Clone failed: ' + (error.message || 'Unknown error'));
+    }
+  });
   });
 }
 
@@ -342,7 +368,7 @@ async function loadFromCloud() {
       const data = docSnap.data();
       newProjects[docSnap.id] = {
         name: data.name || 'Cloud Project',
-        files: data.files || {},
+        files: window.IDEditorCore.normalizeProjectFiles(data.files || {}),
         updatedAt: new Date(data.updatedAt).getTime() || Date.now()
       };
     });
@@ -392,6 +418,13 @@ function parserForFile(name) {
 }
 
 loadProjectsData();
+if ('serviceWorker' in navigator && location.protocol !== 'file:') {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js').catch((error) => {
+      console.warn('[IDEDITOR] Offline cache registration unavailable:', error && error.message);
+    });
+  });
+}
 document.documentElement.setAttribute('data-theme', (localStorage.getItem(THEME_KEY) === 'vs' || localStorage.getItem(THEME_KEY) === 'light') ? 'light' : 'dark');
 
 /* =========================================================
@@ -436,8 +469,9 @@ function makeUri(name) { return monaco.Uri.parse('inmemory:///' + encodeURICompo
 
 function ensureModel(name) {
   if (models[name]) return models[name];
-  const meta = FILES[name];
-  const model = monaco.editor.createModel(meta ? meta.content : '', meta ? meta.lang : langFromFilename(name), makeUri(name));
+  const rawMeta = FILES[name];
+  const meta = typeof rawMeta === 'string' ? { content: rawMeta, lang: langFromFilename(name) } : (rawMeta || {});
+  const model = monaco.editor.createModel(meta.content == null ? '' : meta.content, meta.lang || langFromFilename(name), makeUri(name));
   models[name] = model;
   savedSnapshot[name] = model.getValue();
   model.onDidChangeContent(() => { markDirtyState(name); scheduleSave(); });
