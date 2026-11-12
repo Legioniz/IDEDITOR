@@ -258,7 +258,6 @@ function wireProjectsUI() {
       showToast('Clone failed: ' + (error.message || 'Unknown error'));
     }
   });
-  });
 }
 
 /* =========================================================
