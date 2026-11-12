@@ -34,23 +34,19 @@ const AI_MODEL_KEY    = 'idEditor.aiModel';
 
 let currentProjectId = null;
 let projectsData = {};
+let projectStorage = null;
+let projectStorageWarningShown = false;
 
 /* =========================================================
    PROJECT MANAGEMENT LOGIC
    ========================================================= */
 function generateId() { return 'p_' + Date.now().toString(36) + Math.random().toString(36).substr(2, 5); }
 
-function loadProjectsData() {
-  try {
-    const raw = localStorage.getItem(PROJECTS_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (parsed && parsed.projects) {
-        projectsData = parsed.projects;
-        currentProjectId = parsed.currentProjectId;
-      }
-    }
-  } catch (e) { console.warn('Failed to load projects', e); }
+async function loadProjectsData() {
+  projectStorage = new window.IDEditorProjectStorage();
+  const loaded = await projectStorage.open();
+  projectsData = loaded.projects || {};
+  currentProjectId = loaded.currentProjectId || null;
 
   if (!projectsData || Object.keys(projectsData).length === 0) {
     const id = generateId();
@@ -62,7 +58,6 @@ function loadProjectsData() {
       }
     };
     currentProjectId = id;
-    saveProjectsToStorage();
   } else if (!currentProjectId || !projectsData[currentProjectId]) {
     currentProjectId = Object.keys(projectsData)[0];
   }
@@ -73,29 +68,55 @@ function loadProjectsData() {
   });
   FILES = projectsData[currentProjectId].files;
   filesList = Object.keys(FILES);
+  await saveProjectsToStorage();
+  return { mode: projectStorage.mode, warning: projectStorage.lastError };
+}
+
+function handleProjectStorageError(error) {
+  console.error('[IDEDITOR] Project storage failed:', error);
+  if (!projectStorageWarningShown) {
+    projectStorageWarningShown = true;
+    showToast('Project storage failed. Export your work before closing or refreshing.');
+  }
+  return false;
 }
 
 function saveProjectsToStorage() {
-  try {
-    localStorage.setItem(PROJECTS_KEY, JSON.stringify({
-      currentProjectId: currentProjectId,
-      projects: projectsData
-    }));
-  } catch (e) { console.warn('Failed to save projects', e); }
+  if (!projectStorage) return Promise.resolve(false);
+  return projectStorage.saveAll(projectsData, currentProjectId).then(saved => {
+    if (saved === false) return handleProjectStorageError(new Error('No persistent browser storage is available.'));
+    return true;
+  }).catch(handleProjectStorageError);
 }
 
 function saveCurrentProjectFiles() {
-  if (!currentProjectId || !projectsData[currentProjectId]) return;
+  if (!currentProjectId || !projectsData[currentProjectId]) return Promise.resolve(false);
+  const projectId = currentProjectId;
   const data = {};
   Object.keys(models).forEach(k => {
     const content = models[k].getValue();
     data[k] = { lang: models[k].getLanguageId() || langFromFilename(k), content };
     savedSnapshot[k] = content;
   });
-  projectsData[currentProjectId].files = data;
-  projectsData[currentProjectId].updatedAt = Date.now();
-  saveProjectsToStorage();
-  hasPendingSave = false; Object.keys(models).forEach(markDirtyState);
+  projectsData[projectId].files = data;
+  projectsData[projectId].updatedAt = Date.now();
+  hasPendingSave = false;
+  Object.keys(models).forEach(markDirtyState);
+
+  if (!projectStorage) return Promise.resolve(false);
+  return projectStorage.saveProject(projectId, projectsData[projectId], projectId).then(saved => {
+    if (saved === false) {
+      if (currentProjectId === projectId) hasPendingSave = true;
+      return handleProjectStorageError(new Error('No persistent browser storage is available.'));
+    }
+    return true;
+  }).catch(error => {
+    if (currentProjectId === projectId) {
+      hasPendingSave = true;
+      Object.keys(models).forEach(markDirtyState);
+    }
+    return handleProjectStorageError(error);
+  });
 }
 
 function renderProjectsDashboard() {
@@ -172,6 +193,7 @@ function deleteProject(id) {
   } else {
     saveProjectsToStorage();
   }
+  saveProjectsToStorage();
   renderProjectsDashboard();
 }
 
@@ -441,7 +463,6 @@ function parserForFile(name) {
   return { html: 'html', htm: 'html', css: 'css', js: 'babel', mjs: 'babel', jsx: 'babel', ts: 'typescript', tsx: 'typescript', json: 'json', md: 'markdown' }[ext] || null;
 }
 
-loadProjectsData();
 if ('serviceWorker' in navigator && location.protocol !== 'file:') {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('./sw.js').catch((error) => {
@@ -482,12 +503,31 @@ let activeFile = 'index.html', uriSeq = 0;
 let minimapEnabled = localStorage.getItem(MINIMAP_KEY) === 'true';
 let fontSize = parseInt(localStorage.getItem(FONTSIZE_KEY), 10) || (isMobile() ? 14 : 13);
 
-if (typeof require === 'undefined') {
-  document.getElementById('editor').innerHTML = '<div style="padding:20px;color:#ff7b72;font-family:sans-serif">Failed to load Monaco Editor.</div>';
-} else {
-  require.config({ paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs' } });
-  require(['vs/editor/editor.main'], initEditor);
+async function bootEditorAfterStorage() {
+  try {
+    const storageState = await loadProjectsData();
+    if (storageState.mode === 'localStorage-fallback') {
+      showToast('IndexedDB unavailable. Using limited local storage fallback.');
+    } else if (storageState.mode === 'memory-fallback') {
+      showToast('Persistent browser storage unavailable. Changes may not survive refresh.');
+    }
+
+    if (typeof require === 'undefined') {
+      document.getElementById('editor').innerHTML = '<div style="padding:20px;color:#ff7b72;font-family:sans-serif">Failed to load Monaco Editor.</div>';
+      return;
+    }
+    require.config({ paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs' } });
+    require(['vs/editor/editor.main'], initEditor);
+  } catch (error) {
+    console.error('[IDEDITOR] Workspace startup failed:', error);
+    const host = document.getElementById('editor');
+    if (host) {
+      host.innerHTML = '<div style="padding:20px;color:#ff7b72;font-family:sans-serif">Unable to open your saved workspace. Your existing data was not reset. Close other IDEDITOR tabs and reload, or export the legacy backup if available.</div>';
+    }
+    showToast('Workspace storage unavailable. Existing project data was not reset.');
+  }
 }
+bootEditorAfterStorage();
 
 function makeUri(name) { return monaco.Uri.parse('inmemory:///' + encodeURIComponent(name) + '/' + (++uriSeq)); }
 
@@ -535,7 +575,12 @@ function initEditor() {
 }
 
 document.addEventListener('keydown', e => {
-  if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); saveCurrentProjectFiles(); showToast('Project Saved'); }
+  if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+    e.preventDefault();
+    saveCurrentProjectFiles().then(saved => {
+      if (saved) showToast('Project Saved');
+    });
+  }
 });
 
 function wireTier1Features() {
