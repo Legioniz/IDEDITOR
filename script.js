@@ -1304,6 +1304,7 @@ async function gitPull(branchOverride) {
 async function gitCommit() {
   const project = currentProject();
   if (!project) return showToast('No active project');
+  if (project.pendingCommit) return showToast('Push the staged commit before creating another one.');
   saveCurrentProjectFiles();
   const branch = localStorage.getItem(GIT_BRANCH_KEY) || (project.gitTracking && project.gitTracking.branch) || 'main';
   const message = (document.getElementById('gitMessage').value || 'Update from IDEDITOR').trim();
