@@ -721,7 +721,8 @@
         '<div class="modal-buttons">' +
         '<button class="btn primary" id="btnSaveAISettings" style="display:none;">Save Settings</button>' +
         '<button class="btn" id="btnCloseAISettings">Close</button>' +
-        '</div>';
+        '</div>' +
+        '<p class="modal-note">Provider API keys stay in memory for this tab only. Re-enter them after a page reload.</p>';
 
       legacyEls.forEach((el) => {
         el.style.display = 'none';
