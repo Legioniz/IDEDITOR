@@ -101,3 +101,16 @@ test('AI pipeline passes each result to the next agent in sequence', async () =>
   assert.deepEqual(dividers, ['Builder', 'Reviewer']);
   assert.equal(result.result, 'Reviewer output');
 });
+
+test('AI pipeline can resume at a failed step with the prior agent output', async () => {
+  const agents = [{ name: 'Planner' }, { name: 'Builder' }, { name: 'Reviewer' }];
+  const prompts = [];
+  const result = await core.orchestrateAgents('pipeline', 'Build a page', agents, async (prompt, agent) => {
+    prompts.push({ prompt, agent: agent.name });
+    return { ok: true, result: agent.name + ' resumed' };
+  }, null, 1, 'Planner checkpoint');
+  assert.equal(prompts.length, 2);
+  assert.equal(prompts[0].agent, 'Builder');
+  assert.match(prompts[0].prompt, /Planner checkpoint/);
+  assert.equal(result.result, 'Reviewer resumed');
+});
