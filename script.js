@@ -1112,7 +1112,7 @@ function wirePreviewControls() {
     document.body.appendChild(link);
     link.click();
     link.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
     showToast('Preview HTML downloaded');
   });
   let autoOn = false, autoTimer = null;
