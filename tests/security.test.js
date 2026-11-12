@@ -63,6 +63,7 @@ test('GitHub pushes are fast-forward only and branch refs are URL-encoded', () =
 });
 
 test('local application scripts exist and are referenced', () => {
+  assert.match(html, /src=["']\.\/editor-core\.js["']/);
   assert.match(html, /src=["']script\.js["']/);
   assert.match(html, /src=["']ai-agents\.js["']/);
   assert.ok(fs.existsSync(path.join(root, 'script.js')));
