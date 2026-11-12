@@ -56,7 +56,7 @@
     return entries;
   }
   function normalizeProjectPath(path) {
-    const parts = String(path || '').replace(/\\\\/g, '/').split('/');
+    const parts = String(path || '').replace(/\\/g, '/').split('/');
     const normalized = [];
     parts.forEach(part => {
       if (!part || part === '.') return;
@@ -80,25 +80,25 @@
   }
   function rewriteLocalCss(css, ownerPath, files) {
     const base = String(ownerPath || '').split('/').slice(0, -1).join('/');
-    return String(css || '').replace(/url\\(\\s*(["']?)([^)'"]+)\\1\\s*\\)/gi, (match, quote, rawPath) => {
+    return String(css || '').replace(/url\(\s*(["']?)([^)'"]+)\1\s*\)/gi, (match, quote, rawPath) => {
       const value = String(rawPath).trim();
-      if (/^(?:[a-z][a-z0-9+.-]*:|\\/\\/|#)/i.test(value)) return match;
+      if (/^(?:[a-z][a-z0-9+.-]*:|\/\/|#)/i.test(value)) return match;
       const resolved = normalizeProjectPath((base ? base + '/' : '') + value.split(/[?#]/)[0]);
       if (!Object.prototype.hasOwnProperty.call(files, resolved)) return match;
       return 'url("' + dataUriFor(resolved, files[resolved]) + '")';
     });
   }
   function rewriteLocalHtmlResources(html, files) {
-    return String(html || '').replace(/\\b(src|href)\\s*=\\s*(["'])([^"']+)\\2/gi, (match, attribute, quote, rawPath) => {
+    return String(html || '').replace(/\b(src|href)\s*=\s*(["'])([^"']+)\2/gi, (match, attribute, quote, rawPath) => {
       const value = String(rawPath).trim();
-      if (/^(?:[a-z][a-z0-9+.-]*:|\\/\\/|#|mailto:|tel:)/i.test(value)) return match;
+      if (/^(?:[a-z][a-z0-9+.-]*:|\/\/|#|mailto:|tel:)/i.test(value)) return match;
       const resolved = normalizeProjectPath(value.split(/[?#]/)[0]);
       if (!Object.prototype.hasOwnProperty.call(files, resolved)) return match;
       if (resolved === 'style.css' || resolved === 'script.js') return match;
-      if (attribute.toLowerCase() === 'href' && /\\.css$/i.test(resolved)) {
+      if (attribute.toLowerCase() === 'href' && /\.css$/i.test(resolved)) {
         return attribute + '=' + quote + dataUriFor(resolved, rewriteLocalCss(files[resolved], resolved, files)) + quote;
       }
-      if (attribute.toLowerCase() === 'src' && /\\.(?:js|mjs)$/i.test(resolved)) {
+      if (attribute.toLowerCase() === 'src' && /\.(?:js|mjs)$/i.test(resolved)) {
         return attribute + '=' + quote + dataUriFor(resolved, files[resolved]) + quote;
       }
       return attribute + '=' + quote + dataUriFor(resolved, files[resolved]) + quote;
@@ -110,16 +110,16 @@
     const openScript = '<scr' + 'ipt>', closeScript = '</scr' + 'ipt>';
     const csp = '<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; script-src \'unsafe-inline\' data:; style-src \'unsafe-inline\' data:; img-src data: blob:; font-src data:; media-src data: blob:; connect-src \'none\'; frame-src \'none\'; object-src \'none\'; base-uri \'none\'; form-action \'none\'">';
     const hook = openScript + "(function(){function ser(v){if(typeof v==='string')return v;if(v instanceof Error)return v.message;try{return JSON.stringify(v);}catch(e){return String(v);}}function send(type,args){try{parent.postMessage({__preview:true,type:type,msg:Array.prototype.map.call(args,ser).join(' ')},'*');}catch(e){}}['log','info','warn','error'].forEach(function(t){var orig=console[t]?console[t].bind(console):function(){};console[t]=function(){orig.apply(null,arguments);send(t,arguments);};});window.addEventListener('error',function(e){send('error',[e.message+' @ line '+e.lineno]);});window.addEventListener('unhandledrejection',function(e){send('error',['Unhandled rejection: '+ser(e.reason)]);});})();" + closeScript;
-    const additionalStyles = Object.keys(files).filter(path => /\\.css$/i.test(path) && path !== 'style.css')
-      .sort().map(path => '<style data-ideditor-file="' + path.replace(/&/g, '&amp;').replace(/"/g, '&quot;') + '">\\n' + rewriteLocalCss(files[path], path, files) + '\\n</style>').join('');
-    const head = csp + hook + '<style>\\n' + rewriteLocalCss(css || '', 'style.css', files) + '\\n</style>' + additionalStyles;
-    const body = openScript + '\\ntry{\\n' + (js || '') + '\\n}catch(e){ console.error(e && e.message ? e.message : e); }\\n' + closeScript;
+    const additionalStyles = Object.keys(files).filter(path => /\.css$/i.test(path) && path !== 'style.css')
+      .sort().map(path => '<style data-ideditor-file="' + path.replace(/&/g, '&amp;').replace(/"/g, '&quot;') + '">' + '\n' + rewriteLocalCss(files[path], path, files) + '\n</style>').join('');
+    const head = csp + hook + '<style>\n' + rewriteLocalCss(css || '', 'style.css', files) + '\n</style>' + additionalStyles;
+    const body = openScript + '\ntry{\n' + (js || '') + '\n}catch(e){ console.error(e && e.message ? e.message : e); }\n' + closeScript;
     const source = rewriteLocalHtmlResources(html || '', files);
-    if (/<html[\\s>]/i.test(source)) {
+    if (/<html[\s>]/i.test(source)) {
       let output = source;
-      if (/<\\/head>/i.test(output)) output = output.replace(/<\\/head>/i, head + '</head>');
+      if (/<\/head>/i.test(output)) output = output.replace(/<\/head>/i, head + '</head>');
       else output = output.replace(/<html[^>]*>/i, match => match + '<head>' + head + '</head>');
-      if (/<\\/body>/i.test(output)) output = output.replace(/<\\/body>/i, body + '</body>');
+      if (/<\/body>/i.test(output)) output = output.replace(/<\/body>/i, body + '</body>');
       else output += body;
       return output;
     }
