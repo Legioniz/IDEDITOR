@@ -569,36 +569,20 @@
   }
 
   async function runSingle(prompt, agents) {
-    const agent = agents[0];
-    const retry = () => runSingle(prompt, agents);
-    await runAgent(prompt, agent, { retry });
+    const groupId = makeId();
+    return window.IDEditorCore.orchestrateAgents('single', prompt, agents,
+      (stepPrompt, agent) => runAgent(stepPrompt, agent, { groupId }));
   }
-
   async function runParallel(prompt, agents) {
     const groupId = makeId();
-    const jobs = agents.map((agent) => runAgent(prompt, agent, {
-      groupId,
-      retry: () => runAgent(prompt, agent, { groupId })
-    }));
-    await Promise.all(jobs);
+    return window.IDEditorCore.orchestrateAgents('parallel', prompt, agents,
+      (stepPrompt, agent) => runAgent(stepPrompt, agent, { groupId }));
   }
-
-  async function runPipeline(prompt, agents, startIndex, previousOutput) {
-    startIndex = startIndex || 0;
+  async function runPipeline(prompt, agents) {
     const groupId = makeId();
-    let previous = previousOutput || '';
-    for (let i = startIndex; i < agents.length; i++) {
-      const agent = agents[i];
-      const stepPrompt = i === 0
-        ? prompt
-        : 'Previous agent (' + agents[i - 1].name + ' via ' + providerLabel(agents[i - 1].provider) + ') produced:\n\n'
-          + previous + '\n\nNow improve/fix/complete this:\n' + prompt;
-      const retry = () => runPipeline(prompt, agents, i, previous);
-      const result = await runAgent(stepPrompt, agent, { groupId, retry });
-      if (!result.ok) return;
-      previous = result.result;
-      if (i < agents.length - 1) appendPipelineDivider(agents[i + 1].name);
-    }
+    return window.IDEditorCore.orchestrateAgents('pipeline', prompt, agents,
+      (stepPrompt, agent) => runAgent(stepPrompt, agent, { groupId }),
+      appendPipelineDivider);
   }
 
   function appendPipelineDivider(nextAgentName) {
@@ -631,7 +615,7 @@
       else if (state.mode === 'parallel') await runParallel(prompt, agents);
       else if (state.mode === 'pipeline') await runPipeline(prompt, agents);
     } catch (e) {
-      // individual agent failures already rendered
+      renderMessage('system', 'AI orchestration failed: ' + (e.message || String(e)));
     }
   }
 
