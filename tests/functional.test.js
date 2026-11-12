@@ -95,7 +95,9 @@ test('preview embeds linked project resources and blocks external network access
     }
   );
   assert.match(output, /Content-Security-Policy/);
+  assert.ok(output.indexOf('Content-Security-Policy') < output.indexOf('rel="stylesheet"'), 'CSP must precede linked resources');
   assert.match(output, /connect-src 'none'/);
+  assert.match(output, /h1 \{ color: blue; \}/, 'additional project stylesheets should be included');
   assert.match(output, /data:text\/css;charset=utf-8/);
   assert.match(output, /data:image\/svg\+xml;charset=utf-8/);
   assert.match(output, /data:text\/javascript;charset=utf-8/);
