@@ -50,7 +50,8 @@ multi-agent AI assistant — all directly from your browser without any backend.
   a phone-shaped device frame (375px)
 - Built-in console capturing `console.*` and uncaught errors, with
   click-to-jump-to-line
-- Fullscreen preview, open-in-new-tab, close
+- Fullscreen preview, download-preview HTML, close
+- Embedded preview runs in a sandboxed iframe without same-origin access
 
 ### 🐙 GitHub Integration (REST API)
 - Clone public and private repos via Personal Access Token
@@ -61,7 +62,7 @@ multi-agent AI assistant — all directly from your browser without any backend.
 ### ☁️ Firebase Cloud Sync
 - Login with Google
 - Save and load projects to Firestore
-- Git credentials sync automatically across devices
+- Repository URL preferences can sync; GitHub tokens remain in tab memory only and must be re-entered after refresh
 
 ### 🎨 Themes
 Dark (default), Light, Dracula, Monokai, GitHub Dark — Monokai and
@@ -83,6 +84,14 @@ Simulated shell with commands: `help`, `ls`, `cat`, `touch`, `mkdir`,
 - Offline shell caching via service worker
 
 ---
+
+## 🔐 Security & Credential Handling
+
+- Project previews run in a sandboxed iframe with scripts enabled but same-origin access, popups, and top-level navigation disabled.
+- Preview console messages are accepted only from the actual preview frame and are type-checked and length-limited.
+- AI Markdown is sanitized against an HTML allowlist before it is inserted into the chat.
+- GitHub Personal Access Tokens and AI provider API keys are memory-only. They are not persisted to local storage or Firebase.
+- Older locally stored credential values are removed during app startup. Sign in to Firebase once after updating so IDEDITOR can remove a legacy Git token field from your cloud settings.
 
 ## 🛠️ Tech Stack
 
