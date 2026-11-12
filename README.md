@@ -36,10 +36,12 @@ multi-agent AI assistant — all directly from your browser without any backend.
 - Create, clone-from-GitHub, switch, and delete projects
 - Per-project file sets, persisted locally
 - Projects dashboard with cards, dates, file counts
+- Large workspaces lazy-load Monaco models as files are opened, preserving unopened files in the project snapshot
 
 ### ✍️ Monaco Editor
 - Same engine as VS Code — syntax highlighting, auto-complete, minimap
 - Files & folders tree with rename, delete, filter
+- Folder contents render on expansion, file search is debounced, and dirty indicators use cached element references instead of full DOM scans
 - Find & Replace with case sensitivity and multi-line search
 - Auto-format via Prettier
 - Font-size controls, theme selector, minimap toggle
