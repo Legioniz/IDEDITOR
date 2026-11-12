@@ -187,3 +187,65 @@ test('asynchronous Git operations stay bound to the project that started them', 
   assert.match(script.slice(commitStart, pushStart), /saveProjectsToStorage\(\[targetProjectId\]\)/);
   assert.match(script.slice(pushStart), /saveProjectsToStorage\(\[targetProjectId\]\)/);
 });
+
+test('large workspaces create Monaco models only for files that are opened', () => {
+  const initStart = script.indexOf('function initEditor(');
+  const initEnd = script.indexOf('editor = monaco.editor.create', initStart);
+  assert.ok(initStart >= 0 && initEnd > initStart);
+  assert.match(script.slice(initStart, initEnd), /ensureModel\(activeFile\)/);
+  assert.doesNotMatch(script.slice(initStart, initEnd), /filesList\.forEach\(ensureModel\)/);
+
+  const switchStart = script.indexOf('function switchProject(');
+  const switchEnd = script.indexOf('function createNewProject(', switchStart);
+  assert.match(script.slice(switchStart, switchEnd), /ensureModel\(activeFile\)/);
+  assert.doesNotMatch(script.slice(switchStart, switchEnd), /filesList\.forEach\(ensureModel\)/);
+
+  const applyStart = script.indexOf('function applyWorkspaceFiles(');
+  const applyEnd = script.indexOf('async function gitClone(', applyStart);
+  assert.match(script.slice(applyStart, applyEnd), /ensureModel\(activeFile\)/);
+  assert.doesNotMatch(script.slice(applyStart, applyEnd), /filesList\.forEach\(ensureModel\)/);
+});
+
+test('workspace exports, preview, and Git snapshots include unopened files', () => {
+  const start = script.indexOf('function collectWorkspaceFiles(');
+  const end = script.indexOf('function currentProject(', start);
+  const body = script.slice(start, end);
+  assert.match(body, /Object\.entries\(FILES/);
+  assert.match(body, /Object\.entries\(models\)/);
+  assert.match(script, /const data = collectWorkspaceFiles\(\)/);
+  assert.match(script, /Object\.entries\(collectWorkspaceFiles\(\)\)/);
+  assert.match(script, /readProjectFile\('index\.html'\)/);
+});
+
+test('dirty indicators use cached elements instead of querying the whole DOM per keystroke', () => {
+  assert.match(script, /const tabElements = new Map\(\)/);
+  assert.match(script, /const sidebarFileElements = new Map\(\)/);
+  const start = script.indexOf('function markDirtyState(');
+  const end = script.indexOf('let saveTimer', start);
+  const body = script.slice(start, end);
+  assert.doesNotMatch(body, /querySelector(All)?/);
+  assert.match(body, /findTabEl\(file\)/);
+  assert.match(body, /findSideItemEl\(file\)/);
+});
+
+test('sidebar folders render children on demand and file search is debounced', () => {
+  assert.match(script, /childrenContainer\.dataset\.rendered === 'true'/);
+  assert.match(script, /if \(isExpanded\) renderChildren\(\)/);
+  assert.match(script, /function scheduleSidebarRender\(\)/);
+  assert.match(script, /fileFilter\.addEventListener\('input', scheduleSidebarRender\)/);
+});
+
+test('cloud loading protects all lazy-loaded files and in-flight autosaves', () => {
+  assert.match(script, /const persistedActiveFiles = \{\}/);
+  assert.match(script, /pendingProjectWrites\.get\(activeId\)/);
+  assert.match(script, /sameFileSnapshots\(activeFiles, persistedActiveFiles\)/);
+});
+
+test('cloud saves and local commits wait for the local workspace save', () => {
+  const cloudStart = script.indexOf('async function saveToCloud(');
+  const cloudEnd = script.indexOf('async function loadFromCloud(', cloudStart);
+  assert.match(script.slice(cloudStart, cloudEnd), /await saveCurrentProjectFiles\(\)/);
+  const commitStart = script.indexOf('async function gitCommit(');
+  const pushStart = script.indexOf('async function gitPush(', commitStart);
+  assert.match(script.slice(commitStart, pushStart), /await saveCurrentProjectFiles\(\)/);
+});
