@@ -853,18 +853,35 @@ async function ensurePrettier() {
   prettierReady = true;
 }
 async function formatCurrent() {
-  if (!editor) return; const parser = parserForFile(activeFile); if (!parser) return showToast('No formatter for ' + activeFile);
+  if (!editor) return; 
+  const parser = parserForFile(activeFile); 
+  if (!parser) return showToast('No formatter for ' + activeFile);
+  
   try {
-    showToast('Formatting…'); await ensurePrettier();
-    const P = window.prettierPlugins || {}; const plugins = [P.babel, P.estree, P.html, P.postcss, P.typescript, P.markdown].filter(Boolean);
-    const model = models[activeFile], code = model.getValue(), formatted = await window.prettier.format(code, { parser, plugins, tabWidth: 2, printWidth: 80, singleQuote: true });
+    showToast('Formatting…'); 
+    await ensurePrettier();
+    
+    // FIX: Prettier v3 loads plugins as an array, not an object
+    const plugins = window.prettierPlugins || [];
+    const model = models[activeFile], code = model.getValue();
+    
+    const formatted = await window.prettier.format(code, { 
+      parser, 
+      plugins, 
+      tabWidth: 2, 
+      printWidth: 80, 
+      singleQuote: true 
+    });
+    
     if (formatted === code) return showToast('Already formatted');
-    model.pushEditOperations([], [{ range: model.getFullModelRange(), text: formatted }], () => null); showToast('Formatted');
-  } catch (e) {
+    
+    model.pushEditOperations([], [{ range: model.getFullModelRange(), text: formatted }], () => null); 
+    showToast('Formatted');
+  } catch (e) { 
     console.error('Format error:', e);
-    showToast('Format failed: ' + (e.message || 'Unknown error').substring(0, 40));
+    showToast('Format failed: ' + (e.message || 'Syntax Error').substring(0, 40)); 
   }
-  }
+}
 async function downloadZip() {
   try {
     if (!window.JSZip) await loadScript('https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js');
