@@ -76,6 +76,38 @@ test('preview builder injects CSS, app code, and console capture', () => {
   assert.match(output, /<main>Hello<\/main>/);
 });
 
+test('cloud import preserves an active workspace with unsaved or staged work', () => {
+  assert.equal(core.shouldApplyCloudProject(false, true, true), true);
+  assert.equal(core.shouldApplyCloudProject(true, true, false), false);
+  assert.equal(core.shouldApplyCloudProject(true, false, true), false);
+  assert.equal(core.shouldApplyCloudProject(true, false, false), true);
+});
+
+test('preview embeds linked project resources and blocks external network access', () => {
+  const output = core.buildPreviewDocument(
+    '<!doctype html><html><head><link rel="stylesheet" href="theme.css"></head><body><img src="assets/logo.svg"><script src="src/app.js"></script></body></html>',
+    'body { color: red; }',
+    'console.log("root");',
+    {
+      'theme.css': 'h1 { color: blue; }',
+      'assets/logo.svg': '<svg xmlns="http://www.w3.org/2000/svg"></svg>',
+      'src/app.js': 'window.localAssetLoaded = true;'
+    }
+  );
+  assert.match(output, /Content-Security-Policy/);
+  assert.match(output, /connect-src 'none'/);
+  assert.match(output, /data:text\\/css;charset=utf-8/);
+  assert.match(output, /data:image\\/svg\\+xml;charset=utf-8/);
+  assert.match(output, /data:text\\/javascript;charset=utf-8/);
+  assert.match(output, /h1%20%7B%20color%3A%20blue/);
+});
+
+test('GitHub clone decoder refuses binary files and accepts UTF-8 text', () => {
+  assert.equal(core.decodeBase64Text(Buffer.from('hello IDEDITOR', 'utf8').toString('base64'), 'README.md'), 'hello IDEDITOR');
+  assert.throws(() => core.decodeBase64Text(Buffer.from([0x89, 0x50, 0x4e, 0x47]).toString('base64'), 'logo.png'), /Binary file is not supported/);
+  assert.throws(() => core.decodeBase64Text(Buffer.from([0xff, 0xfe]).toString('base64'), 'notes.txt'), /not valid UTF-8 text/);
+});
+
 test('AI parallel orchestration runs every selected agent', async () => {
   const agents = [{ name: 'A' }, { name: 'B' }, { name: 'C' }];
   const called = [];
