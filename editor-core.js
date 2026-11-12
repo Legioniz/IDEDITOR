@@ -55,17 +55,71 @@
     });
     return entries;
   }
-  function buildPreviewDocument(html, css, js) {
+  function normalizeProjectPath(path) {
+    const parts = String(path || '').replace(/\\\\/g, '/').split('/');
+    const normalized = [];
+    parts.forEach(part => {
+      if (!part || part === '.') return;
+      if (part === '..') normalized.pop();
+      else normalized.push(part);
+    });
+    return normalized.join('/');
+  }
+  function mimeForPath(path) {
+    const ext = String(path).split('.').pop().toLowerCase();
+    return ({
+      css:'text/css', js:'text/javascript', mjs:'text/javascript', json:'application/json',
+      svg:'image/svg+xml', png:'image/png', jpg:'image/jpeg', jpeg:'image/jpeg',
+      gif:'image/gif', webp:'image/webp', ico:'image/x-icon', txt:'text/plain',
+      html:'text/html', htm:'text/html', xml:'application/xml', woff:'font/woff',
+      woff2:'font/woff2', ttf:'font/ttf', otf:'font/otf'
+    })[ext] || 'application/octet-stream';
+  }
+  function dataUriFor(path, content) {
+    return 'data:' + mimeForPath(path) + ';charset=utf-8,' + encodeURIComponent(String(content));
+  }
+  function rewriteLocalCss(css, ownerPath, files) {
+    const base = String(ownerPath || '').split('/').slice(0, -1).join('/');
+    return String(css || '').replace(/url\\(\\s*(["']?)([^)'"]+)\\1\\s*\\)/gi, (match, quote, rawPath) => {
+      const value = String(rawPath).trim();
+      if (/^(?:[a-z][a-z0-9+.-]*:|\\/\\/|#)/i.test(value)) return match;
+      const resolved = normalizeProjectPath((base ? base + '/' : '') + value.split(/[?#]/)[0]);
+      if (!Object.prototype.hasOwnProperty.call(files, resolved)) return match;
+      return 'url("' + dataUriFor(resolved, files[resolved]) + '")';
+    });
+  }
+  function rewriteLocalHtmlResources(html, files) {
+    return String(html || '').replace(/\\b(src|href)\\s*=\\s*(["'])([^"']+)\\2/gi, (match, attribute, quote, rawPath) => {
+      const value = String(rawPath).trim();
+      if (/^(?:[a-z][a-z0-9+.-]*:|\\/\\/|#|mailto:|tel:)/i.test(value)) return match;
+      const resolved = normalizeProjectPath(value.split(/[?#]/)[0]);
+      if (!Object.prototype.hasOwnProperty.call(files, resolved)) return match;
+      if (resolved === 'style.css' || resolved === 'script.js') return match;
+      if (attribute.toLowerCase() === 'href' && /\\.css$/i.test(resolved)) {
+        return attribute + '=' + quote + dataUriFor(resolved, rewriteLocalCss(files[resolved], resolved, files)) + quote;
+      }
+      if (attribute.toLowerCase() === 'src' && /\\.(?:js|mjs)$/i.test(resolved)) {
+        return attribute + '=' + quote + dataUriFor(resolved, files[resolved]) + quote;
+      }
+      return attribute + '=' + quote + dataUriFor(resolved, files[resolved]) + quote;
+    });
+  }
+  function buildPreviewDocument(html, css, js, projectFiles) {
+    const files = {};
+    Object.entries(projectFiles || {}).forEach(([path, content]) => { files[normalizeProjectPath(path)] = String(content == null ? '' : content); });
     const openScript = '<scr' + 'ipt>', closeScript = '</scr' + 'ipt>';
+    const csp = '<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; script-src \'unsafe-inline\' data:; style-src \'unsafe-inline\' data:; img-src data: blob:; font-src data:; media-src data: blob:; connect-src \'none\'; frame-src \'none\'; object-src \'none\'; base-uri \'none\'; form-action \'none\'">';
     const hook = openScript + "(function(){function ser(v){if(typeof v==='string')return v;if(v instanceof Error)return v.message;try{return JSON.stringify(v);}catch(e){return String(v);}}function send(type,args){try{parent.postMessage({__preview:true,type:type,msg:Array.prototype.map.call(args,ser).join(' ')},'*');}catch(e){}}['log','info','warn','error'].forEach(function(t){var orig=console[t]?console[t].bind(console):function(){};console[t]=function(){orig.apply(null,arguments);send(t,arguments);};});window.addEventListener('error',function(e){send('error',[e.message+' @ line '+e.lineno]);});window.addEventListener('unhandledrejection',function(e){send('error',['Unhandled rejection: '+ser(e.reason)]);});})();" + closeScript;
-    const head = hook + '<style>\n' + (css || '') + '\n</style>';
-    const body = openScript + '\ntry{\n' + (js || '') + '\n}catch(e){ console.error(e && e.message ? e.message : e); }\n' + closeScript;
-    const source = html || '';
-    if (/<html[\s>]/i.test(source)) {
+    const additionalStyles = Object.keys(files).filter(path => /\\.css$/i.test(path) && path !== 'style.css')
+      .sort().map(path => '<style data-ideditor-file="' + path.replace(/&/g, '&amp;').replace(/"/g, '&quot;') + '">\\n' + rewriteLocalCss(files[path], path, files) + '\\n</style>').join('');
+    const head = csp + hook + '<style>\\n' + rewriteLocalCss(css || '', 'style.css', files) + '\\n</style>' + additionalStyles;
+    const body = openScript + '\\ntry{\\n' + (js || '') + '\\n}catch(e){ console.error(e && e.message ? e.message : e); }\\n' + closeScript;
+    const source = rewriteLocalHtmlResources(html || '', files);
+    if (/<html[\\s>]/i.test(source)) {
       let output = source;
-      if (/<\/head>/i.test(output)) output = output.replace(/<\/head>/i, head + '</head>');
+      if (/<\\/head>/i.test(output)) output = output.replace(/<\\/head>/i, head + '</head>');
       else output = output.replace(/<html[^>]*>/i, match => match + '<head>' + head + '</head>');
-      if (/<\/body>/i.test(output)) output = output.replace(/<\/body>/i, body + '</body>');
+      if (/<\\/body>/i.test(output)) output = output.replace(/<\\/body>/i, body + '</body>');
       else output += body;
       return output;
     }
@@ -88,5 +142,26 @@
     }
     return { ok:true, result:previous };
   }
-  return { inferLanguage, normalizeProjectFiles, nextProjectIdAfterRemoval, sameFileSnapshots, mergeFileSnapshots, canPublishAgainst, buildGitTreeEntries, buildPreviewDocument, orchestrateAgents };
+  function shouldApplyCloudProject(isActive, hasUnsavedChanges, hasPendingCommit) {
+    return !isActive || (!hasUnsavedChanges && !hasPendingCommit);
+  }
+  function decodeBase64Text(base64, path) {
+    const extension = String(path || '').split('.').pop().toLowerCase();
+    const binaryExtensions = new Set(['png','jpg','jpeg','gif','webp','bmp','ico','tif','tiff','pdf','zip','gz','7z','rar','exe','dll','so','dylib','wasm','mp3','wav','ogg','mp4','mov','avi','mkv','woff','woff2','ttf','otf','eot','psd','ai','blend','glb','bin','class','jar']);
+    if (binaryExtensions.has(extension)) throw new Error('Binary file is not supported yet: ' + path + '. Clone stopped without changing the project.');
+    let binary;
+    try {
+      binary = typeof atob === 'function' ? atob(String(base64 || '')) : Buffer.from(String(base64 || ''), 'base64').toString('binary');
+    } catch (error) {
+      throw new Error('Invalid base64 content in ' + path);
+    }
+    const bytes = Uint8Array.from(binary, character => character.charCodeAt(0));
+    if (bytes.includes(0)) throw new Error('Binary file is not supported yet: ' + path + '. Clone stopped without changing the project.');
+    try {
+      return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+    } catch (error) {
+      throw new Error('File is not valid UTF-8 text: ' + path + '. Clone stopped without changing the project.');
+    }
+  }
+  return { inferLanguage, normalizeProjectFiles, nextProjectIdAfterRemoval, sameFileSnapshots, mergeFileSnapshots, canPublishAgainst, buildGitTreeEntries, buildPreviewDocument, orchestrateAgents, shouldApplyCloudProject, decodeBase64Text };
 }));
