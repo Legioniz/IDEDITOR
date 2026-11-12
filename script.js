@@ -1068,7 +1068,7 @@ async function executeCommand(raw) {
   addTermLine(`$ ${raw}`);
   const args = parseTerminalArgs(raw), cmd = args[0].toLowerCase();
   switch (cmd) {
-    case 'help': addTermLine('Available: clear, ls, cat, touch, mkdir, run, format, git clone, git commit, git push, firebase save/load, theme', 'info'); break;
+    case 'help': addTermLine('Available: clear, ls, cat, touch, mkdir, run, format, git clone, git commit, git pull, git push, firebase save/load, theme', 'info'); break;
     case 'clear': termOutput.innerHTML = ''; break;
     case 'ls': addTermLine(filesList.join('    ')); break;
     case 'cat': if (!args[1] || !models[args[1]]) return addTermLine('File not found', 'error'); addTermLine(models[args[1]].getValue()); break;
@@ -1192,184 +1192,221 @@ async function handleGitCommand(args) {
     if (msgIndex === -1 || !args[msgIndex + 1]) return addTermLine('Usage: git commit -m "message"', 'error');
     document.getElementById('gitMessage').value = args.slice(msgIndex + 1).join(' ');
     addTermLine(`Committing...`, 'info'); await gitCommit();
+  } else if (sub === 'pull') {
+    addTermLine('Synchronizing from remote...', 'info');
+    try { await gitPull(); } catch (error) { addTermLine('Pull failed: ' + (error.message || error), 'error'); }
   } else if (sub === 'push') {
-    addTermLine('Pushing...', 'info'); await gitPush();
+    addTermLine('Publishing staged commit...', 'info'); await gitPush();
   } else {
     addTermLine('Unknown git command', 'error');
   }
 }
 
-async function gitClone() {
-  const { url, token } = getRepoConfig();
-  const parsed = parseGitHubUrl(url);
-  if (!parsed) throw new Error('Invalid GitHub URL');
-
-  const headers = { 'Accept': 'application/vnd.github.v3+json' };
-  if (token) headers['Authorization'] = `token ${token}`;
-
-  const repoRes = await fetch(`https://api.github.com/repos/${parsed.owner}/${parsed.repo}`, { headers });
-  if (!repoRes.ok) throw new Error(`GitHub API: ${repoRes.status} ${repoRes.statusText}`);
-  const repoData = await repoRes.json();
-  
-  const selectedBranch = document.getElementById('gitBranchSelect').value;
-  const branch = selectedBranch || repoData.default_branch || 'main';
-  localStorage.setItem(GIT_BRANCH_KEY, branch);
-
-  const branchPath = encodeURIComponent(branch);
-  const treeRes = await fetch(`https://api.github.com/repos/${parsed.owner}/${parsed.repo}/git/trees/${branchPath}?recursive=1`, { headers });
-  if (!treeRes.ok) throw new Error(`GitHub API: ${treeRes.status} ${treeRes.statusText}`);
-  const treeData = await treeRes.json();
-  const blobs = treeData.tree.filter(item => item.type === 'blob');
-
-  const newFiles = {};
-  await Promise.all(blobs.map(async (blob) => {
-    if (blob.size > 5000000) return; // Skip >5MB
-    const contentRes = await fetch(blob.url, { headers });
-    if (contentRes.ok) {
-      const contentData = await contentRes.json();
-      const base64 = contentData.content.replace(/\n/g, '');
-      newFiles[blob.path] = decodeBase64(base64);
-    }
-  }));
-
-  if (editor) editor.setModel(null);
-  filesList.length = 0;
-  Object.keys(FILES).forEach(k => delete FILES[k]);
-  Object.keys(models).forEach(k => { try { models[k].dispose(); } catch (e) {} delete models[k]; });
-  Object.keys(savedSnapshot).forEach(k => delete savedSnapshot[k]);
-  expandedFolders.clear(); foldersInitialized = false;
-
-  Object.keys(newFiles).forEach(name => {
-    FILES[name] = { lang: langFromFilename(name), content: newFiles[name] };
-    filesList.push(name); ensureModel(name);
-  });
-
-  if (!filesList.length) filesList = ['index.html'];
-  activeFile = filesList[0];
-  renderTabs(); renderSidebarFiles(); switchFile(activeFile); saveCurrentProjectFiles();
-  
-  showToast('Cloned successfully!');
-  updateGitStatus();
+function collectWorkspaceFiles() {
+  const snapshot = {};
+  Object.entries(models).forEach(([path, model]) => { snapshot[path] = model.getValue(); });
+  return snapshot;
 }
-
-async function gitCommit() { await gitPush(); }
-
+function currentProject() { return currentProjectId && projectsData[currentProjectId] ? projectsData[currentProjectId] : null; }
+function projectGitTracking(project = currentProject()) {
+  if (!project) return null;
+  if (!project.gitTracking || typeof project.gitTracking !== 'object') project.gitTracking = { remoteUrl:'', branch:'', branches:{} };
+  if (!project.gitTracking.branches) project.gitTracking.branches = {};
+  return project.gitTracking;
+}
+async function fetchGitHubSnapshot(branchOverride) {
+  const config = getRepoConfig(), parsed = parseGitHubUrl(config.url);
+  if (!parsed) throw new Error('Enter a valid GitHub repository URL first.');
+  const headers = { Accept:'application/vnd.github+json' };
+  if (config.token) headers.Authorization = 'Bearer ' + config.token;
+  const repoResponse = await fetch('https://api.github.com/repos/' + parsed.owner + '/' + parsed.repo, { headers });
+  const repoData = await repoResponse.json().catch(() => ({}));
+  if (!repoResponse.ok) throw new Error(repoData.message || 'Unable to access repository.');
+  const select = document.getElementById('gitBranchSelect');
+  const branch = branchOverride || (select && select.value) || repoData.default_branch || 'main';
+  const branchResponse = await fetch('https://api.github.com/repos/' + parsed.owner + '/' + parsed.repo + '/branches/' + encodeURIComponent(branch), { headers });
+  const branchData = await branchResponse.json().catch(() => ({}));
+  if (!branchResponse.ok || !branchData.commit || !branchData.commit.sha) throw new Error(branchData.message || 'Unable to read branch ' + branch);
+  const commitResponse = await fetch('https://api.github.com/repos/' + parsed.owner + '/' + parsed.repo + '/git/commits/' + branchData.commit.sha, { headers });
+  const commitData = await commitResponse.json().catch(() => ({}));
+  if (!commitResponse.ok || !commitData.tree || !commitData.tree.sha) throw new Error(commitData.message || 'Unable to read branch tree.');
+  const treeResponse = await fetch('https://api.github.com/repos/' + parsed.owner + '/' + parsed.repo + '/git/trees/' + commitData.tree.sha + '?recursive=1', { headers });
+  const treeData = await treeResponse.json().catch(() => ({}));
+  if (!treeResponse.ok || treeData.truncated) throw new Error(treeData.message || 'Repository tree is incomplete; no files changed.');
+  const blobs = (treeData.tree || []).filter(item => item.type === 'blob'), files = {};
+  for (const blob of blobs) {
+    if (blob.size > 5000000) throw new Error('File exceeds the 5 MB editor limit: ' + blob.path);
+    const response = await fetch(blob.url, { headers }), data = await response.json().catch(() => ({}));
+    if (!response.ok || data.encoding !== 'base64' || typeof data.content !== 'string') throw new Error('Unable to download ' + blob.path);
+    files[blob.path] = decodeBase64(data.content.replace(/\n/g, ''));
+  }
+  return { owner:parsed.owner, repo:parsed.repo, remoteUrl:config.url, branch, headSha:branchData.commit.sha, files };
+}
+function applyWorkspaceFiles(fileSnapshot) {
+  const previousFile = activeFile;
+  if (editor) editor.setModel(null);
+  Object.keys(models).forEach(path => { try { models[path].dispose(); } catch (error) {} delete models[path]; });
+  Object.keys(savedSnapshot).forEach(path => delete savedSnapshot[path]);
+  Object.keys(FILES).forEach(path => delete FILES[path]);
+  filesList.length = 0; expandedFolders.clear(); foldersInitialized = false;
+  Object.entries(fileSnapshot || {}).forEach(([path, content]) => {
+    FILES[path] = { lang:langFromFilename(path), content:String(content) };
+    filesList.push(path);
+  });
+  if (!filesList.length) { FILES['index.html'] = { lang:'html', content:DEFAULT_HTML }; filesList.push('index.html'); }
+  filesList.forEach(ensureModel);
+  activeFile = filesList.includes(previousFile) ? previousFile : filesList[0];
+  renderTabs(); renderSidebarFiles(); switchFile(activeFile); saveCurrentProjectFiles();
+}
+async function gitClone(options = {}) {
+  const config = getRepoConfig();
+  if (!parseGitHubUrl(config.url)) throw new Error('Invalid GitHub URL');
+  await updateGitStatus();
+  const snapshot = await fetchGitHubSnapshot(options.branch || null);
+  const localFiles = collectWorkspaceFiles(), defaults = {};
+  Object.entries(DEFAULT_FILES).forEach(([path, value]) => { defaults[path] = value.content || ''; });
+  const clean = window.IDEditorCore.sameFileSnapshots(localFiles, defaults) || Object.values(localFiles).every(value => !value);
+  if (!options.replace && !clean && !confirm('Cloning will replace the current project files. Continue?')) return false;
+  applyWorkspaceFiles(snapshot.files);
+  const project = currentProject(), tracking = projectGitTracking(project);
+  tracking.remoteUrl = snapshot.remoteUrl; tracking.branch = snapshot.branch;
+  tracking.branches[snapshot.branch] = { headSha:snapshot.headSha, files:{ ...snapshot.files } };
+  delete project.pendingCommit;
+  localStorage.setItem(GIT_BRANCH_KEY, snapshot.branch);
+  saveProjectsToStorage();
+  showToast('Cloned ' + snapshot.owner + '/' + snapshot.repo + ' (' + snapshot.branch + ')');
+  addTermLine('Clone complete: ' + Object.keys(snapshot.files).length + ' files', 'success');
+  await updateGitStatus();
+  return true;
+}
+async function gitPull(branchOverride) {
+  const project = currentProject(), tracking = projectGitTracking(project), config = getRepoConfig();
+  if (!project || !tracking || tracking.remoteUrl !== config.url || !tracking.branches[tracking.branch]) {
+    showToast('Clone this repository into the project before using Pull.'); return false;
+  }
+  if (project.pendingCommit) { showToast('Push or clear the staged commit before pulling.'); return false; }
+  const targetBranch = branchOverride || localStorage.getItem(GIT_BRANCH_KEY) || tracking.branch;
+  const snapshot = await fetchGitHubSnapshot(targetBranch), localFiles = collectWorkspaceFiles();
+  const targetBase = tracking.branches[targetBranch];
+  let mergedFiles;
+  if (targetBase && targetBase.files) {
+    const merged = window.IDEditorCore.mergeFileSnapshots(targetBase.files, localFiles, snapshot.files);
+    if (merged.conflicts.length) {
+      showToast('Pull stopped: conflicting files ' + merged.conflicts.slice(0,5).join(', '));
+      addTermLine('Pull conflict. No files changed: ' + merged.conflicts.join(', '), 'error'); return false;
+    }
+    mergedFiles = merged.files;
+  } else {
+    const previousBase = tracking.branches[tracking.branch];
+    if (!previousBase || !window.IDEditorCore.sameFileSnapshots(localFiles, previousBase.files)) {
+      showToast('This branch has no sync baseline and local edits exist. Clone it into a new project first.'); return false;
+    }
+    mergedFiles = snapshot.files;
+  }
+  applyWorkspaceFiles(mergedFiles);
+  tracking.remoteUrl = snapshot.remoteUrl; tracking.branch = snapshot.branch;
+  tracking.branches[snapshot.branch] = { headSha:snapshot.headSha, files:{ ...snapshot.files } };
+  localStorage.setItem(GIT_BRANCH_KEY, snapshot.branch);
+  saveProjectsToStorage();
+  showToast('Pulled and synchronized ' + snapshot.branch);
+  addTermLine('Pull complete. Non-overlapping local changes were preserved.', 'success');
+  await updateGitStatus(); return true;
+}
+async function gitCommit() {
+  const project = currentProject();
+  if (!project) return showToast('No active project');
+  saveCurrentProjectFiles();
+  const branch = localStorage.getItem(GIT_BRANCH_KEY) || (project.gitTracking && project.gitTracking.branch) || 'main';
+  const message = (document.getElementById('gitMessage').value || 'Update from IDEDITOR').trim();
+  project.pendingCommit = { id:generateId(), message, branch, remoteUrl:getRepoConfig().url, files:collectWorkspaceFiles(), createdAt:Date.now() };
+  saveProjectsToStorage();
+  showToast('Commit saved locally. Push to publish it.');
+  addTermLine('Staged local commit: ' + message, 'success'); return true;
+}
 async function gitPush() {
-  const { url, token } = getRepoConfig();
-  const parsed = parseGitHubUrl(url);
-  if (!parsed || !token) return showToast('Set a valid repo URL and session token in Git Settings');
-
-  const branch = localStorage.getItem(GIT_BRANCH_KEY) || 'main';
-  const branchPath = encodeURIComponent(branch);
-  const headers = {
-    'Accept': 'application/vnd.github.v3+json',
-    'Authorization': `Bearer ${token}`,
-    'Content-Type': 'application/json'
-  };
-
+  const project = currentProject(), pending = project && project.pendingCommit;
+  const config = getRepoConfig(), parsed = parseGitHubUrl(config.url);
+  if (!project || !pending) return showToast('Commit Changes first, then Push.');
+  if (!parsed || !config.token) return showToast('Set a valid repository URL and session token in Git Settings.');
+  if (pending.remoteUrl !== config.url) return showToast('The staged commit belongs to a different repository.');
+  const branch = pending.branch;
+  if (branch !== (localStorage.getItem(GIT_BRANCH_KEY) || branch)) return showToast('The staged commit belongs to a different branch.');
+  const tracking = projectGitTracking(project), baseline = tracking && tracking.remoteUrl === config.url && tracking.branches[branch];
+  if (!baseline || !baseline.headSha) return showToast('Clone or Pull this branch before pushing.');
+  const headers = { Accept:'application/vnd.github+json', Authorization:'Bearer ' + config.token, 'Content-Type':'application/json' };
   try {
-    const refRes = await fetch(`https://api.github.com/repos/${parsed.owner}/${parsed.repo}/git/ref/heads/${branchPath}`, { headers });
-    const refData = await refRes.json().catch(() => ({}));
-    if (!refRes.ok || !refData.object?.sha) {
-      throw new Error(refData.message || 'Failed to fetch the latest branch commit');
-    }
-
-    const latestCommitSha = refData.object.sha;
-    const commitRes = await fetch(`https://api.github.com/repos/${parsed.owner}/${parsed.repo}/git/commits/${latestCommitSha}`, { headers });
-    const commitData = await commitRes.json().catch(() => ({}));
-    if (!commitRes.ok || !commitData.tree?.sha) {
-      throw new Error(commitData.message || 'Failed to fetch the latest commit tree');
-    }
-
-    const treeItems = [];
-    for (const [path, model] of Object.entries(models)) {
-      const blobRes = await fetch(`https://api.github.com/repos/${parsed.owner}/${parsed.repo}/git/blobs`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({ content: model.getValue(), encoding: 'utf-8' })
+    const branchResponse = await fetch('https://api.github.com/repos/' + parsed.owner + '/' + parsed.repo + '/branches/' + encodeURIComponent(branch), { headers });
+    const branchData = await branchResponse.json().catch(() => ({})), remoteHead = branchData.commit && branchData.commit.sha;
+    if (!branchResponse.ok) throw new Error(branchData.message || 'Unable to read remote branch.');
+    if (!window.IDEditorCore.canPublishAgainst(remoteHead, baseline.headSha)) throw new Error('Remote branch moved. Pull and resolve changes before pushing.');
+    const commitResponse = await fetch('https://api.github.com/repos/' + parsed.owner + '/' + parsed.repo + '/git/commits/' + remoteHead, { headers });
+    const commitData = await commitResponse.json().catch(() => ({}));
+    if (!commitResponse.ok || !commitData.tree || !commitData.tree.sha) throw new Error(commitData.message || 'Unable to read remote commit tree.');
+    const blobShas = {};
+    for (const path of Object.keys(pending.files)) {
+      if (Object.prototype.hasOwnProperty.call(baseline.files, path) && pending.files[path] === baseline.files[path]) continue;
+      const blobResponse = await fetch('https://api.github.com/repos/' + parsed.owner + '/' + parsed.repo + '/git/blobs', {
+        method:'POST', headers, body:JSON.stringify({ content:pending.files[path], encoding:'utf-8' })
       });
-      const blobData = await blobRes.json().catch(() => ({}));
-      if (!blobRes.ok || !blobData.sha) {
-        throw new Error(blobData.message || 'Failed to upload blob for ' + path);
-      }
-      treeItems.push({ path, mode: '100644', type: 'blob', sha: blobData.sha });
+      const blobData = await blobResponse.json().catch(() => ({}));
+      if (!blobResponse.ok || !blobData.sha) throw new Error(blobData.message || 'Failed to upload ' + path);
+      blobShas[path] = blobData.sha;
     }
-
-    if (!treeItems.length) throw new Error('There are no open project files to push');
-
-    const newTreeRes = await fetch(`https://api.github.com/repos/${parsed.owner}/${parsed.repo}/git/trees`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({ base_tree: commitData.tree.sha, tree: treeItems })
+    const treeItems = window.IDEditorCore.buildGitTreeEntries(pending.files, baseline.files, blobShas);
+    if (!treeItems.length) {
+      delete project.pendingCommit; saveProjectsToStorage(); document.getElementById('gitMessage').value = '';
+      showToast('No changes to push.'); return true;
+    }
+    const treeResponse = await fetch('https://api.github.com/repos/' + parsed.owner + '/' + parsed.repo + '/git/trees', {
+      method:'POST', headers, body:JSON.stringify({ base_tree:commitData.tree.sha, tree:treeItems })
     });
-    const newTreeData = await newTreeRes.json().catch(() => ({}));
-    if (!newTreeRes.ok || !newTreeData.sha) {
-      throw new Error(newTreeData.message || 'Failed to create the Git tree');
-    }
-
-    const msg = (document.getElementById('gitMessage').value || 'Update from IDEDITOR').trim();
-    const newCommitRes = await fetch(`https://api.github.com/repos/${parsed.owner}/${parsed.repo}/git/commits`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({ message: msg, tree: newTreeData.sha, parents: [latestCommitSha] })
+    const treeData = await treeResponse.json().catch(() => ({}));
+    if (!treeResponse.ok || !treeData.sha) throw new Error(treeData.message || 'Failed to create Git tree.');
+    const newCommitResponse = await fetch('https://api.github.com/repos/' + parsed.owner + '/' + parsed.repo + '/git/commits', {
+      method:'POST', headers, body:JSON.stringify({ message:pending.message, tree:treeData.sha, parents:[remoteHead] })
     });
-    const newCommitData = await newCommitRes.json().catch(() => ({}));
-    if (!newCommitRes.ok || !newCommitData.sha) {
-      throw new Error(newCommitData.message || 'Failed to create the commit');
-    }
-
-    // Never force-update a branch. A concurrent upstream change must cause a safe failure.
-    const updateRefRes = await fetch(`https://api.github.com/repos/${parsed.owner}/${parsed.repo}/git/refs/heads/${branchPath}`, {
-      method: 'PATCH',
-      headers,
-      body: JSON.stringify({ sha: newCommitData.sha, force: false })
+    const newCommitData = await newCommitResponse.json().catch(() => ({}));
+    if (!newCommitResponse.ok || !newCommitData.sha) throw new Error(newCommitData.message || 'Failed to create remote commit.');
+    const updateRefResponse = await fetch('https://api.github.com/repos/' + parsed.owner + '/' + parsed.repo + '/git/refs/heads/' + encodeURIComponent(branch), {
+      method:'PATCH', headers, body:JSON.stringify({ sha:newCommitData.sha, force:false })
     });
-    const updateRefData = await updateRefRes.json().catch(() => ({}));
-    if (!updateRefRes.ok) {
-      throw new Error(updateRefData.message || 'Push rejected; refresh the branch and retry');
-    }
-
+    const updateRefData = await updateRefResponse.json().catch(() => ({}));
+    if (!updateRefResponse.ok) throw new Error(updateRefData.message || 'Push rejected because remote branch moved.');
+    baseline.headSha = newCommitData.sha; baseline.files = { ...pending.files };
+    delete project.pendingCommit; saveCurrentProjectFiles(); saveProjectsToStorage();
     document.getElementById('gitMessage').value = '';
-    showToast('Pushed successfully!');
-    addTermLine('Push successful', 'success');
-    await updateGitStatus();
+    showToast('Pushed committed snapshot to ' + branch);
+    addTermLine('Push successful: ' + newCommitData.sha.slice(0,7), 'success');
+    await updateGitStatus(); return true;
   } catch (error) {
     showToast('Push failed: ' + (error.message || 'Unknown GitHub error'));
-    addTermLine('Push failed: ' + (error.message || 'Unknown GitHub error'), 'error');
+    addTermLine('Push failed: ' + (error.message || error), 'error'); return false;
   }
 }
-
 async function updateGitStatus() {
-  const el = document.getElementById('gitStatus');
-  const branchSelect = document.getElementById('gitBranchSelect');
-  const { url, token } = getRepoConfig();
-  const parsed = parseGitHubUrl(url);
-  
+  const el = document.getElementById('gitStatus'), branchSelect = document.getElementById('gitBranchSelect');
+  const config = getRepoConfig(), parsed = parseGitHubUrl(config.url);
   if (!parsed) { el.textContent = 'Not connected'; branchSelect.style.display = 'none'; return; }
-  
-  const headers = { 'Accept': 'application/vnd.github.v3+json' };
-  if (token) headers['Authorization'] = `token ${token}`;
-  
+  const headers = { Accept:'application/vnd.github+json' };
+  if (config.token) headers.Authorization = 'Bearer ' + config.token;
   try {
-    const res = await fetch(`https://api.github.com/repos/${parsed.owner}/${parsed.repo}`, { headers });
-    if (res.ok) {
-      el.textContent = `Connected: ${parsed.owner}/${parsed.repo}`;
-      const branchRes = await fetch(`https://api.github.com/repos/${parsed.owner}/${parsed.repo}/branches`, { headers });
-      if (branchRes.ok) {
-        const branches = await branchRes.json();
-        const currentBranch = localStorage.getItem(GIT_BRANCH_KEY) || 'main';
-        branchSelect.innerHTML = '';
-        branches.forEach(b => {
-          const opt = document.createElement('option');
-          opt.value = b.name;
-          opt.textContent = b.name;
-          if (b.name === currentBranch) opt.selected = true;
-          branchSelect.appendChild(opt);
-        });
-        branchSelect.style.display = 'block';
-      }
-    } else { el.textContent = 'Not connected (Invalid URL/Token)'; branchSelect.style.display = 'none'; }
-  } catch (e) { el.textContent = 'Not connected'; branchSelect.style.display = 'none'; }
+    const repoResponse = await fetch('https://api.github.com/repos/' + parsed.owner + '/' + parsed.repo, { headers });
+    const repoData = await repoResponse.json().catch(() => ({}));
+    if (!repoResponse.ok) throw new Error(repoData.message || 'Repository unavailable');
+    el.textContent = 'Connected: ' + parsed.owner + '/' + parsed.repo;
+    const branchResponse = await fetch('https://api.github.com/repos/' + parsed.owner + '/' + parsed.repo + '/branches?per_page=100', { headers });
+    const branches = await branchResponse.json().catch(() => []);
+    if (!branchResponse.ok || !Array.isArray(branches)) throw new Error('Unable to load branches');
+    const saved = localStorage.getItem(GIT_BRANCH_KEY), preferred = saved || repoData.default_branch;
+    branchSelect.innerHTML = '';
+    branches.forEach(info => { const option = document.createElement('option'); option.value = info.name; option.textContent = info.name; branchSelect.appendChild(option); });
+    branchSelect.value = branches.some(info => info.name === preferred) ? preferred : repoData.default_branch;
+    if (!branchSelect.value && branches.length) branchSelect.selectedIndex = 0;
+    branchSelect.style.display = branches.length ? 'block' : 'none';
+    if (!saved || !branches.some(info => info.name === saved)) localStorage.setItem(GIT_BRANCH_KEY, branchSelect.value || repoData.default_branch);
+  } catch (error) {
+    el.textContent = 'Not connected (' + (error.message || 'API error') + ')'; branchSelect.style.display = 'none';
+  }
 }
 
 function wireGitUI() {
@@ -1410,16 +1447,28 @@ function wireGitUI() {
   document.getElementById('btnGitCloseSettings').addEventListener('click', () => document.getElementById('gitSettingsModal').style.display = 'none');
   document.getElementById('btnGitCommit').addEventListener('click', gitCommit); 
   document.getElementById('btnGitPush').addEventListener('click', gitPush);
-  document.getElementById('btnGitPull').addEventListener('click', gitClone); 
+  document.getElementById('btnGitPull').addEventListener('click', () => {
+    gitPull().catch(error => {
+      showToast('Pull failed: ' + (error.message || 'Unknown error'));
+      addTermLine('Pull failed: ' + (error.message || error), 'error');
+    });
+  }); 
   
   document.getElementById('gitBranchSelect').addEventListener('change', (e) => {
-    const branch = e.target.value;
-    if (branch) {
-      localStorage.setItem(GIT_BRANCH_KEY, branch);
-      if (confirm(`Switch to branch "${branch}"? This will reload the files from that branch.`)) {
-        gitClone().catch(err => addTermLine('Switch failed: ' + err.message, 'error'));
-      }
+    const previousBranch = localStorage.getItem(GIT_BRANCH_KEY) || 'main';
+    const selectedBranch = e.target.value;
+    if (!selectedBranch || selectedBranch === previousBranch) return;
+    if (!confirm('Switch to branch "' + selectedBranch + '" and synchronize it with this project?')) {
+      e.target.value = previousBranch;
+      return;
     }
+    gitPull(selectedBranch).then(success => {
+      if (!success) e.target.value = previousBranch;
+    }).catch(error => {
+      e.target.value = previousBranch;
+      showToast('Branch switch failed: ' + (error.message || 'Unknown error'));
+      addTermLine('Branch switch failed: ' + (error.message || error), 'error');
+    });
   });
   
   document.getElementById('btnGitGraph').addEventListener('click', () => { document.getElementById('gitGraphContainer').style.display = 'block'; renderGitGraph(); });
