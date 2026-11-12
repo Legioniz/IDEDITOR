@@ -106,33 +106,33 @@ test('branch cancellation restores the previous branch selection', () => {
 });
 
 test('Git remotes and branches are scoped to the active project', () => {
-  assert.match(script, /function getRepoConfig\\(project = currentProject\\(\\)\\)/);
-  assert.match(script, /tracking\\.remoteUrl/);
-  assert.match(script, /tracking\\.branch \\|\\|/);
-  assert.match(script, /projectGitTracking\\(currentProject\\(\\)\\)/);
-  assert.match(script, /setCurrentProjectRemoteUrl\\(url\\)/);
-  assert.doesNotMatch(script, /localStorage\\.setItem\\(GIT_BRANCH_KEY/);
+  assert.match(script, /function getRepoConfig\(project = currentProject\(\)\)/);
+  assert.match(script, /tracking\.remoteUrl/);
+  assert.match(script, /tracking\.branch \|\|/);
+  assert.match(script, /projectGitTracking\(currentProject\(\)\)/);
+  assert.match(script, /setCurrentProjectRemoteUrl\(url\)/);
+  assert.doesNotMatch(script, /localStorage\.setItem\(GIT_BRANCH_KEY/);
 });
 
 test('cloud loading protects dirty active work and keeps local Git metadata', () => {
-  assert.match(script, /sameFileSnapshots\\(activeFiles, savedSnapshot\\)/);
+  assert.match(script, /sameFileSnapshots\(activeFiles, savedSnapshot\)/);
   assert.match(script, /shouldApplyCloudProject/);
   assert.match(script, /activeCloudFiles/);
-  assert.match(script, /const localProject = newProjects\\[docSnap\\.id\\] \\|\\| \\{\\}/);
+  assert.match(script, /const localProject = newProjects\[docSnap\.id\] \|\| \{\}/);
 });
 
 test('GitHub clone rejects binary and non-regular Git tree entries before applying files', () => {
-  assert.match(script, /decodeBase64Text\\(data\\.content/);
-  assert.match(script, /item\\.mode !== '100644'/);
+  assert.match(script, /decodeBase64Text\(data\.content/);
+  assert.match(script, /item\.mode !== '100644'/);
   assert.match(script, /Unsupported Git entry/);
 });
 
 test('preview CSP blocks external network requests and embeds project resources', () => {
   const core = read('editor-core.js');
-  assert.match(core, /connect-src \\'none\\'/);
+  assert.match(core, /connect-src 'none'/);
   assert.match(core, /rewriteLocalHtmlResources/);
   assert.match(core, /rewriteLocalCss/);
-  assert.match(script, /collectWorkspaceFiles\\(\\)\\);/);
+  assert.match(script, /collectWorkspaceFiles\(\)\);/);
 });
 
 test('PWA caches the application shell and declares a scalable icon', () => {
