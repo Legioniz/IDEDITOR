@@ -190,8 +190,6 @@ function deleteProject(id) {
       };
       switchProject(replacementId);
     }
-  } else {
-    saveProjectsToStorage();
   }
   saveProjectsToStorage();
   renderProjectsDashboard();
