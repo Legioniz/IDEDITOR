@@ -57,7 +57,7 @@ test('AI Markdown is sanitized before DOM insertion', () => {
 });
 
 test('GitHub pushes are fast-forward only and branch refs are URL-encoded', () => {
-  assert.match(script, /const branchPath = encodeURIComponent\(branch\)/);
+  assert.match(script, /encodeURIComponent\(branch\)/);
   assert.match(script, /force:\s*false/);
   assert.doesNotMatch(script, /force:\s*true/);
 });
