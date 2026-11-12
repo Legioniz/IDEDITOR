@@ -101,7 +101,7 @@ Simulated shell with commands: `help`, `ls`, `cat`, `touch`, `mkdir`,
 - Older locally stored credential values are removed during app startup. Sign in to Firebase once after updating so IDEDITOR can remove a legacy Git token field from your cloud settings.
 - Project switching normalizes older string-only file records into `{ lang, content }` entries to preserve saved contents.
 - GitHub Pull uses a three-way merge; overlapping changes stop the operation without modifying the workspace.
-- Cloud imports protect the active project when it contains unsaved editor changes or a staged commit. Other cloud projects can still load, and imported project records retain local Git tracking metadata.
+- Cloud imports preserve any project with a staged commit and protect the active project when it has unsaved editor changes. Other safe-to-replace cloud projects can still load, and imported project records retain local Git tracking metadata.
 
 ## 🛠️ Tech Stack
 
