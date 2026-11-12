@@ -344,3 +344,33 @@ test('bulk persistence does not replace a newer project with an older snapshot',
   assert.equal(loaded.projects.shared.files['index.html'].content, 'latest');
   assert.equal(loaded.projects.additional.name, 'New project');
 });
+
+
+test('project deletions made in fallback mode do not reappear when IndexedDB recovers', async () => {
+  const indexedDB = new FakeIndexedDB();
+  const seed = new IDEditorProjectStorage({ indexedDB, localStorage: makeLocalStorage() });
+  await seed.open();
+  await seed.saveAll({
+    active: { name: 'Active', updatedAt: 20, files: {} },
+    deleted: { name: 'Deleted elsewhere', updatedAt: 10, files: {} }
+  }, 'active');
+
+  const localStorage = makeLocalStorage({
+    'idEditor.projectsData': JSON.stringify({
+      currentProjectId: 'active',
+      projects: {
+        active: { name: 'Active', updatedAt: 20, files: {} },
+        deleted: { name: 'Deleted elsewhere', updatedAt: 10, files: {} }
+      }
+    })
+  });
+  const fallback = new IDEditorProjectStorage({ indexedDB: null, localStorage });
+  await fallback.open();
+  await fallback.deleteProject('deleted', 'active');
+
+  const recovery = new IDEditorProjectStorage({ indexedDB, localStorage });
+  const restored = await recovery.open();
+  assert.deepEqual(Object.keys(restored.projects), ['active']);
+  assert.equal(restored.currentProjectId, 'active');
+  assert.equal(localStorage.getItem('idEditor.projectsData'), null);
+});
