@@ -83,6 +83,7 @@ test('Commit Changes stages locally while Push publishes staged snapshots', () =
   const commitBody = script.slice(commitStart, pushStart);
   const pushBody = script.slice(pushStart, script.indexOf('async function updateGitStatus()', pushStart));
   assert.match(commitBody, /project\.pendingCommit\s*=/);
+  assert.match(commitBody, /if \(project\.pendingCommit\)/);
   assert.doesNotMatch(commitBody, /gitPush\(/);
   assert.match(pushBody, /!project \|\| !pending/);
   assert.match(pushBody, /canPublishAgainst/);
