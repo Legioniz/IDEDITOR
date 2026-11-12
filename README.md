@@ -51,13 +51,18 @@ multi-agent AI assistant — all directly from your browser without any backend.
 - Built-in console capturing `console.*` and uncaught errors, with
   click-to-jump-to-line
 - Fullscreen preview, download-preview HTML, close
-- Embedded preview runs in a sandboxed iframe without same-origin access
+- Embedded preview runs in a sandboxed iframe without same-origin access.
+- Local linked CSS, classic JavaScript, images, and other text-backed resources are embedded from the active project where supported.
+- Preview Content Security Policy blocks outbound network connections, external frames, forms, and remote assets. Projects that require API calls, external CDNs, remote fonts, or network services will not work in the preview.
+- ES-module import graphs, server-side routes, and binary workspace assets are not currently served by a virtual filesystem. Use the preview for self-contained client-side projects.
 
 ### 🐙 GitHub Integration (REST API)
 - Clone public and private repos via Personal Access Token
 - **Commit Changes** stages a local snapshot in the current browser project; **Push** publishes that staged snapshot to GitHub.
+- Each project stores its own repository URL, branch, and synchronization baseline. New projects can still inherit the saved default repository URL until a project is configured separately.
 - **Pull** uses a three-way merge against the last cloned/pulled snapshot. Non-overlapping local and remote changes are preserved; conflicting files stop the pull without changing the workspace.
 - Branch switching requires confirmation and uses the same safe synchronization path.
+- Clone supports regular UTF-8 text blobs up to 5 MB per file. Binary files, symlinks, submodules, and non-standard file modes are rejected before workspace replacement rather than being corrupted or silently downgraded.
 - Commit graph viewer
 
 ### ☁️ Firebase Cloud Sync
@@ -82,7 +87,8 @@ Simulated shell with commands: `help`, `ls`, `cat`, `touch`, `mkdir`,
 ### 📱 PWA
 - Installable on supported desktop and mobile browsers with a scalable SVG app icon.
 - Responsive mobile layout with a touch-friendly action bar.
-- Offline application-shell caching; previously loaded version-pinned Monaco, syntax-highlighting, and Firebase CDN resources are cached opportunistically after first use. First-time offline use still requires an initial online load.
+- Offline application-shell caching; previously loaded version-pinned Monaco, syntax-highlighting, Firebase, and worker resources are cached opportunistically after first use. First-time offline use still requires an initial online load.
+- Browser storage still uses localStorage for project data; large projects may hit quota or performance limits. An IndexedDB-backed storage migration remains future work.
 
 ---
 
@@ -95,6 +101,7 @@ Simulated shell with commands: `help`, `ls`, `cat`, `touch`, `mkdir`,
 - Older locally stored credential values are removed during app startup. Sign in to Firebase once after updating so IDEDITOR can remove a legacy Git token field from your cloud settings.
 - Project switching normalizes older string-only file records into `{ lang, content }` entries to preserve saved contents.
 - GitHub Pull uses a three-way merge; overlapping changes stop the operation without modifying the workspace.
+- Cloud imports protect the active project when it contains unsaved editor changes or a staged commit. Other cloud projects can still load, and imported project records retain local Git tracking metadata.
 
 ## 🛠️ Tech Stack
 
