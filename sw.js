@@ -1,8 +1,8 @@
 /* IDEDITOR offline application shell and opportunistic CDN cache. */
 'use strict';
-const SHELL_CACHE = 'ideditor-shell-v2';
+const SHELL_CACHE = 'ideditor-shell-v3';
 const CDN_CACHE = 'ideditor-cdn-v1';
-const SHELL_ASSETS = ['./','./index.html','./style.css','./script.js','./ai-agents.js','./editor-core.js','./manifest.json','./icon.svg'];
+const SHELL_ASSETS = ['./','./index.html','./style.css','./script.js','./ai-agents.js','./editor-core.js','./project-storage.js','./manifest.json','./icon.svg'];
 const CDN_HOSTS = new Set(['cdn.jsdelivr.net','cdnjs.cloudflare.com','www.gstatic.com']);
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(SHELL_CACHE).then(cache => cache.addAll(SHELL_ASSETS)).then(() => self.skipWaiting()));
