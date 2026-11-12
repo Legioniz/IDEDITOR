@@ -571,18 +571,29 @@
   async function runSingle(prompt, agents) {
     const groupId = makeId();
     return window.IDEditorCore.orchestrateAgents('single', prompt, agents,
-      (stepPrompt, agent) => runAgent(stepPrompt, agent, { groupId }));
+      (stepPrompt, agent) => runAgent(stepPrompt, agent, {
+        groupId,
+        retry: () => runSingle(prompt, agents)
+      }));
   }
   async function runParallel(prompt, agents) {
     const groupId = makeId();
     return window.IDEditorCore.orchestrateAgents('parallel', prompt, agents,
-      (stepPrompt, agent) => runAgent(stepPrompt, agent, { groupId }));
+      (stepPrompt, agent) => runAgent(stepPrompt, agent, {
+        groupId,
+        retry: () => runAgent(stepPrompt, agent, { groupId })
+      }));
   }
-  async function runPipeline(prompt, agents) {
+  async function runPipeline(prompt, agents, startIndex, previousOutput) {
     const groupId = makeId();
     return window.IDEditorCore.orchestrateAgents('pipeline', prompt, agents,
-      (stepPrompt, agent) => runAgent(stepPrompt, agent, { groupId }),
-      appendPipelineDivider);
+      (stepPrompt, agent, index, previous) => runAgent(stepPrompt, agent, {
+        groupId,
+        retry: () => runPipeline(prompt, agents, index, previous)
+      }),
+      appendPipelineDivider,
+      startIndex,
+      previousOutput);
   }
 
   function appendPipelineDivider(nextAgentName) {
