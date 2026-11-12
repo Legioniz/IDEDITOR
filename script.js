@@ -36,6 +36,7 @@ let currentProjectId = null;
 let projectsData = {};
 let projectStorage = null;
 let projectStorageWarningShown = false;
+const pendingProjectWrites = new Map();
 
 /* =========================================================
    PROJECT MANAGEMENT LOGIC
@@ -130,6 +131,9 @@ function saveCurrentProjectFiles() {
   Object.keys(models).forEach(markDirtyState);
 
   if (!projectStorage) return Promise.resolve(false);
+  // Track writes so cloud imports can distinguish a clean project from one
+  // whose latest edits have not yet committed to IndexedDB.
+  pendingProjectWrites.set(projectId, (pendingProjectWrites.get(projectId) || 0) + 1);
   // Autosave must not change the persisted active-project selection. A
   // deliberate project switch updates that metadata through saveProjectsToStorage.
   return projectStorage.saveProject(projectId, projectsData[projectId]).then(saved => {
@@ -144,6 +148,10 @@ function saveCurrentProjectFiles() {
       Object.keys(models).forEach(markDirtyState);
     }
     return handleProjectStorageError(error);
+  }).finally(() => {
+    const remaining = (pendingProjectWrites.get(projectId) || 1) - 1;
+    if (remaining > 0) pendingProjectWrites.set(projectId, remaining);
+    else pendingProjectWrites.delete(projectId);
   });
 }
 
@@ -396,11 +404,15 @@ async function saveToCloud() {
   if (!firebaseEnabled || !fbUser) return showToast('Login to save to cloud');
   try {
     showToast('Saving to cloud...');
-    saveCurrentProjectFiles();
+    const projectId = currentProjectId;
+    const project = currentProject();
+    if (!project) return showToast('No active project');
+    const savedLocally = await saveCurrentProjectFiles();
+    if (!savedLocally) return showToast('Local save failed. Cloud save was cancelled to protect your project.');
     const { doc, setDoc } = await import('https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js');
-    await setDoc(doc(fbDb, 'users', fbUser.uid, 'projects', currentProjectId), {
-      name: projectsData[currentProjectId].name,
-      files: projectsData[currentProjectId].files,
+    await setDoc(doc(fbDb, 'users', fbUser.uid, 'projects', projectId), {
+      name: project.name,
+      files: project.files,
       updatedAt: new Date().toISOString()
     });
     showToast('Saved to cloud!'); addTermLine('Project saved to cloud!', 'success');
@@ -418,7 +430,15 @@ async function loadFromCloud() {
     const activeId = currentProjectId;
     const activeProject = currentProject();
     const activeFiles = activeId ? collectWorkspaceFiles() : {};
-    const activeHasUnsavedChanges = Boolean(activeId && !window.IDEditorCore.sameFileSnapshots(activeFiles, savedSnapshot));
+    const persistedActiveFiles = {};
+    Object.entries(activeProject && activeProject.files || {}).forEach(([path, file]) => {
+      persistedActiveFiles[path] = typeof file === 'string' ? file : (file && file.content != null ? String(file.content) : '');
+    });
+    const activeHasUnsavedChanges = Boolean(activeId && (
+      hasPendingSave ||
+      (pendingProjectWrites.get(activeId) || 0) > 0 ||
+      !window.IDEditorCore.sameFileSnapshots(activeFiles, persistedActiveFiles)
+    ));
     let newProjects = { ...projectsData }, activeCloudFiles = null, skippedLocalWork = false;
     const importedProjectIds = [];
     querySnapshot.forEach((docSnap) => {
@@ -1598,7 +1618,15 @@ async function gitCommit() {
   const project = currentProject();
   if (!project) return showToast('No active project');
   if (project.pendingCommit) return showToast('Push the staged commit before creating another one.');
-  saveCurrentProjectFiles();
+  const savedLocally = await saveCurrentProjectFiles();
+  if (!savedLocally) {
+    showToast('Cannot stage a commit because the local project save failed.');
+    return false;
+  }
+  if (currentProjectId !== targetProjectId || currentProject() !== project) {
+    showToast('Commit cancelled because the active project changed.');
+    return false;
+  }
   const tracking = projectGitTracking(project);
   const branch = tracking.branch || (document.getElementById('gitBranchSelect') && document.getElementById('gitBranchSelect').value) || 'main';
   const message = (document.getElementById('gitMessage').value || 'Update from IDEDITOR').trim();
