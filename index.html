@@ -25,7 +25,8 @@
   }
 </script>
    <!-- PWA MANIFEST -->
-  <link rel="manifest" href="manifest.json">
+  <link rel="manifest" href="./manifest.json">
+  <link rel="icon" href="./icon.svg" type="image/svg+xml">
   <!-- Markdown & Syntax Highlighting for AI -->
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/vs2015.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/11.1.1/marked.min.js"></script>
@@ -420,12 +421,13 @@
         <button class="btn primary" id="btnSaveAISettings">Save Settings</button>
         <button class="btn" id="btnCloseAISettings">Close</button>
       </div>
-      <p class="modal-note">Keys are stored securely in your browser's local storage. They are only sent to the official provider APIs.</p>
+      <p class="modal-note">AI provider keys stay in memory for this tab only. They are not saved to browser storage; re-enter them after refreshing.</p>
     </div>
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs/loader.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/lz-string@1.5.0/libs/lz-string.min.js"></script>
+  <script src="./editor-core.js"></script>
   <script src="script.js"></script>
   <script src="ai-agents.js" defer></script>
 </body>
