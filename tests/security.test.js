@@ -148,6 +148,14 @@ test('project autosaves flush on page lifecycle exit', () => {
   assert.match(script, /window\.addEventListener\('pagehide', flushPendingProjectSave\)/);
 });
 
+test('project writes are enqueued before a later delete can be scheduled', () => {
+  const start = script.indexOf('function saveProjectsToStorage(');
+  const end = script.indexOf('function saveCurrentProjectFiles(', start);
+  const body = script.slice(start, end);
+  assert.match(body, /const writes = validIds\.map\(id => projectStorage\.saveProject/);
+  assert.doesNotMatch(body, /validIds\.reduce\(/);
+});
+
 test('Git clone, pull, and commit wait for local project persistence', () => {
   const cloneStart = script.indexOf('async function gitClone(');
   const pullStart = script.indexOf('async function gitPull(', cloneStart);
