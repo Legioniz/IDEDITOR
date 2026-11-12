@@ -120,7 +120,9 @@ function saveCurrentProjectFiles() {
   Object.keys(models).forEach(markDirtyState);
 
   if (!projectStorage) return Promise.resolve(false);
-  return projectStorage.saveProject(projectId, projectsData[projectId], projectId).then(saved => {
+  // Autosave must not change the persisted active-project selection. A
+  // deliberate project switch updates that metadata through saveProjectsToStorage.
+  return projectStorage.saveProject(projectId, projectsData[projectId]).then(saved => {
     if (saved === false) {
       if (currentProjectId === projectId) hasPendingSave = true;
       return handleProjectStorageError(new Error('No persistent browser storage is available.'));
