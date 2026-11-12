@@ -71,13 +71,14 @@
     }
     return '<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">' + head + '</head><body>' + source + body + '</body></html>';
   }
-  async function orchestrateAgents(mode, prompt, agents, runAgent, onPipelineStep) {
+  async function orchestrateAgents(mode, prompt, agents, runAgent, onPipelineStep, startIndex, previousOutput) {
     if (!agents || !agents.length) return { ok:false, error:new Error('No agents selected.') };
-    if (mode === 'single') return runAgent(prompt, agents[0], 0, '');
+    const firstIndex = Number.isInteger(startIndex) ? Math.max(0, Math.min(startIndex, agents.length - 1)) : 0;
+    if (mode === 'single') return runAgent(prompt, agents[firstIndex], firstIndex, previousOutput || '');
     if (mode === 'parallel') return Promise.all(agents.map((agent, index) => runAgent(prompt, agent, index, '')));
     if (mode !== 'pipeline') throw new Error('Unknown AI orchestration mode: ' + mode);
-    let previous = '';
-    for (let index = 0; index < agents.length; index++) {
+    let previous = previousOutput || '';
+    for (let index = firstIndex; index < agents.length; index++) {
       const agent = agents[index];
       const stepPrompt = index === 0 ? prompt : 'Previous agent (' + agents[index - 1].name + ') produced:\n\n' + previous + '\n\nNow improve/fix/complete this:\n' + prompt;
       const result = await runAgent(stepPrompt, agent, index, previous);
