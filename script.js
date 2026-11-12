@@ -47,6 +47,7 @@ async function loadProjectsData() {
   const loaded = await projectStorage.open();
   projectsData = loaded.projects || {};
   currentProjectId = loaded.currentProjectId || null;
+  let createdDefaultProject = false;
 
   if (!projectsData || Object.keys(projectsData).length === 0) {
     const id = generateId();
@@ -58,6 +59,7 @@ async function loadProjectsData() {
       }
     };
     currentProjectId = id;
+    createdDefaultProject = true;
   } else if (!currentProjectId || !projectsData[currentProjectId]) {
     currentProjectId = Object.keys(projectsData)[0];
   }
@@ -68,7 +70,9 @@ async function loadProjectsData() {
   });
   FILES = projectsData[currentProjectId].files;
   filesList = Object.keys(FILES);
-  await saveProjectsToStorage();
+
+  if (createdDefaultProject) await saveProjectsToStorage([currentProjectId]);
+  else await projectStorage.setCurrentProjectId(currentProjectId);
   return { mode: projectStorage.mode, warning: projectStorage.lastError };
 }
 
@@ -81,9 +85,21 @@ function handleProjectStorageError(error) {
   return false;
 }
 
-function saveProjectsToStorage() {
+function saveProjectsToStorage(projectIds) {
   if (!projectStorage) return Promise.resolve(false);
-  return projectStorage.saveAll(projectsData, currentProjectId).then(saved => {
+  const ids = Array.isArray(projectIds) ? [...new Set(projectIds)] : [currentProjectId];
+  const validIds = ids.filter(id => id && projectsData[id]);
+  if (!validIds.length) {
+    return projectStorage.setCurrentProjectId(currentProjectId).catch(handleProjectStorageError);
+  }
+
+  return validIds.reduce((queue, id) => queue.then(() => {
+    return projectStorage.saveProject(
+      id,
+      projectsData[id],
+      id === currentProjectId ? currentProjectId : undefined
+    );
+  }), Promise.resolve()).then(saved => {
     if (saved === false) return handleProjectStorageError(new Error('No persistent browser storage is available.'));
     return true;
   }).catch(handleProjectStorageError);
@@ -175,6 +191,10 @@ function deleteProject(id) {
   const wasActive = currentProjectId === id;
   if (wasActive) saveCurrentProjectFiles();
   delete projectsData[id];
+  // Queue the record deletion before saving the replacement active project.
+  if (projectStorage) {
+    projectStorage.deleteProject(id, wasActive ? null : currentProjectId).catch(handleProjectStorageError);
+  }
 
   if (wasActive) {
     // Prevent switchProject from saving the deleted project's models into its replacement.
@@ -389,6 +409,7 @@ async function loadFromCloud() {
     const activeFiles = activeId ? collectWorkspaceFiles() : {};
     const activeHasUnsavedChanges = Boolean(activeId && !window.IDEditorCore.sameFileSnapshots(activeFiles, savedSnapshot));
     let newProjects = { ...projectsData }, activeCloudFiles = null, skippedLocalWork = false;
+    const importedProjectIds = [];
     querySnapshot.forEach((docSnap) => {
       const data = docSnap.data();
       const normalizedFiles = window.IDEditorCore.normalizeProjectFiles(data.files || {});
@@ -405,6 +426,7 @@ async function loadFromCloud() {
         files: normalizedFiles,
         updatedAt: Number.isFinite(parsedDate) ? parsedDate : Date.now()
       };
+      importedProjectIds.push(docSnap.id);
       if (isActive) {
         activeCloudFiles = {};
         Object.entries(normalizedFiles).forEach(([path, file]) => { activeCloudFiles[path] = file.content; });
@@ -412,7 +434,7 @@ async function loadFromCloud() {
     });
     projectsData = newProjects;
     if (activeCloudFiles) applyWorkspaceFiles(activeCloudFiles);
-    saveProjectsToStorage();
+    saveProjectsToStorage(importedProjectIds);
     renderProjectsDashboard();
     showToast(skippedLocalWork
       ? 'Cloud projects loaded. Projects with unsaved or staged work kept their local version.'
