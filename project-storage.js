@@ -67,7 +67,7 @@
     async open() {
       if (!this.indexedDB) {
         this.mode = this.localStorage ? 'localStorage-fallback' : 'memory-fallback';
-        this.fallbackState = this._readLegacy() || { projects: {}, currentProjectId: null };
+        this.fallbackState = this._readLegacy() || { projects: {}, currentProjectId: null, deletedProjectIds: [] };
         return clone(this.fallbackState);
       }
 
@@ -132,7 +132,10 @@
         if (!parsed || !parsed.projects || typeof parsed.projects !== 'object' || Array.isArray(parsed.projects)) return null;
         return {
           projects: clone(parsed.projects),
-          currentProjectId: parsed.currentProjectId || null
+          currentProjectId: parsed.currentProjectId || null,
+          deletedProjectIds: Array.isArray(parsed.deletedProjectIds)
+            ? [...new Set(parsed.deletedProjectIds.filter(id => typeof id === 'string' && id))]
+            : []
         };
       } catch (error) {
         return null;
@@ -141,11 +144,11 @@
 
     async _migrateLegacyData() {
       const legacy = this._readLegacy();
-      if (!legacy || Object.keys(legacy.projects).length === 0) return;
+      if (!legacy || (Object.keys(legacy.projects).length === 0 && !(legacy.deletedProjectIds || []).length)) return;
 
       // Merge rather than discard the fallback: IndexedDB projects absent from the
-      // legacy snapshot are retained, and a legacy project replaces an existing
-      // record only when its timestamp proves the backup is newer.
+      // legacy snapshot are retained, a legacy project replaces an existing
+      // record only when it is newer, and explicit fallback deletions are honored.
       await this._mergeLegacyIntoIndexedDB(legacy);
 
       // Cleanup is best-effort. A failed remove must never force the app into a
@@ -164,8 +167,11 @@
       const projectStore = transaction.objectStore(PROJECT_STORE);
       const metaStore = transaction.objectStore(META_STORE);
 
+      const deletedIds = new Set(legacy.deletedProjectIds || []);
+      deletedIds.forEach(id => projectStore.delete(id));
+
       Object.entries(legacy.projects).forEach(([id, incoming]) => {
-        if (typeof id !== 'string' || !id) return;
+        if (typeof id !== 'string' || !id || deletedIds.has(id)) return;
         const request = projectStore.get(id);
         request.onsuccess = () => {
           const existing = request.result && request.result.project;
@@ -178,10 +184,10 @@
       const orderRequest = metaStore.get('projectOrder');
       orderRequest.onsuccess = () => {
         const order = orderRequest.result && Array.isArray(orderRequest.result.value)
-          ? orderRequest.result.value.slice()
+          ? orderRequest.result.value.filter(id => !deletedIds.has(id))
           : [];
         Object.keys(legacy.projects).forEach(id => {
-          if (!order.includes(id)) order.push(id);
+          if (!deletedIds.has(id) && !order.includes(id)) order.push(id);
         });
         metaStore.put({ key: 'projectOrder', value: order });
       };
@@ -191,7 +197,8 @@
         const storedId = currentRequest.result && currentRequest.result.value;
         // Retain the existing selection when possible; otherwise let the
         // normal startup validator choose the first project if this ID is stale.
-        const selectedId = storedId || legacy.currentProjectId || null;
+        const candidateId = storedId || legacy.currentProjectId || null;
+        const selectedId = candidateId && deletedIds.has(candidateId) ? null : candidateId;
         metaStore.put({ key: 'currentProjectId', value: selectedId });
       };
 
@@ -276,7 +283,9 @@
       };
       return this._enqueue(async () => {
         if (!this.db) {
-          this.fallbackState = snapshot;
+          const deletedProjectIds = (this.fallbackState.deletedProjectIds || [])
+            .filter(id => !Object.prototype.hasOwnProperty.call(snapshot.projects, id));
+          this.fallbackState = { ...snapshot, deletedProjectIds };
           return this._writeFallback();
         }
         await this._writeIndexedDB(snapshot);
@@ -289,6 +298,7 @@
       return this._enqueue(async () => {
         if (!this.db) {
           this.fallbackState.projects[id] = projectSnapshot;
+          this.fallbackState.deletedProjectIds = (this.fallbackState.deletedProjectIds || []).filter(deletedId => deletedId !== id);
           if (currentProjectId !== undefined) this.fallbackState.currentProjectId = currentProjectId || null;
           return this._writeFallback();
         }
@@ -316,6 +326,7 @@
       return this._enqueue(async () => {
         if (!this.db) {
           delete this.fallbackState.projects[id];
+          this.fallbackState.deletedProjectIds = [...new Set([...(this.fallbackState.deletedProjectIds || []), id])];
           if (currentProjectId !== undefined) this.fallbackState.currentProjectId = currentProjectId || null;
           return this._writeFallback();
         }
@@ -355,6 +366,7 @@
     _writeFallback() {
       if (!this.localStorage) return false;
       try {
+        this.fallbackState.deletedProjectIds = [...new Set(this.fallbackState.deletedProjectIds || [])];
         this.localStorage.setItem(this.legacyKey, JSON.stringify(this.fallbackState));
         return true;
       } catch (error) {
