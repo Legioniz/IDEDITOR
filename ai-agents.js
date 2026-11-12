@@ -124,7 +124,9 @@
 
   // ─── Persistence ───────────────────────────────────────────
   function save() {
-    writeJson(STORAGE.agents, state.agents);
+    // Agent configuration persists, but provider credentials remain memory-only.
+    const persistedAgents = state.agents.map((agent) => ({ ...agent, apiKey: '' }));
+    writeJson(STORAGE.agents, persistedAgents);
     localStorage.setItem(STORAGE.active, state.active);
     localStorage.setItem(STORAGE.mode, state.mode);
     writeJson(STORAGE.compare, state.compare);
@@ -156,6 +158,8 @@
       state.agents = Array.isArray(parsed) ? parsed.map(normalizeAgent) : [];
     }
 
+    // Purge legacy API keys after migrating any existing value into memory.
+    localStorage.removeItem(LEGACY.key);
     state.active = localStorage.getItem(STORAGE.active) || state.agents[0]?.id || '';
     const storedMode = localStorage.getItem(STORAGE.mode);
     state.mode = ['single', 'parallel', 'pipeline'].includes(storedMode) ? storedMode : 'single';
@@ -369,10 +373,21 @@
   }
   
   // NEW: Use Marked.js and Highlight.js if loaded
-  if (typeof window.marked !== 'undefined' && typeof window.hljs !== 'undefined') {
+  if (typeof window.marked !== 'undefined' && typeof window.hljs !== 'undefined' && window.DOMPurify) {
     const contentDiv = document.createElement('div');
     contentDiv.className = 'ai-md-content';
-    contentDiv.innerHTML = window.marked.parse(text(value));
+    const renderedMarkdown = window.marked.parse(text(value));
+    const safeMarkdown = window.DOMPurify.sanitize(renderedMarkdown, {
+      ALLOWED_TAGS: [
+        'p', 'br', 'strong', 'em', 'del', 'blockquote',
+        'ul', 'ol', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+        'a', 'pre', 'code', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'hr'
+      ],
+      ALLOWED_ATTR: ['href', 'title', 'class'],
+      FORBID_TAGS: ['style', 'script', 'iframe', 'object', 'embed', 'svg', 'math', 'form', 'input', 'button'],
+      FORBID_ATTR: ['style']
+    });
+    contentDiv.innerHTML = safeMarkdown;
     
     // Inject Apply buttons into code blocks
     contentDiv.querySelectorAll('pre code').forEach((codeEl) => {

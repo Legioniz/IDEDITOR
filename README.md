@@ -106,3 +106,12 @@ IDEDITOR is 100% client-side — no backend, no build step, no `npm install`.
 ```bash
 git clone https://github.com/YOUR_USERNAME/YOUR_REPO_NAME.git
 cd YOUR_REPO_NAME
+
+## Security notes
+
+- Live previews run in a sandboxed iframe with scripts enabled but same-origin access disabled. Preview messages are accepted only from the active preview frame and are type- and size-checked.
+- AI Markdown is sanitized with DOMPurify before it is inserted into the editor UI. If the sanitizer or Markdown libraries fail to load, the assistant falls back to text-safe rendering.
+- GitHub Personal Access Tokens and AI provider API keys are held in memory for the current tab only. They are not written to local storage or synchronized to Firebase. Re-enter them after a page reload.
+- The Firebase settings migration removes legacy GitHub tokens previously written by older versions.
+- Use a fine-grained GitHub token with the minimum repository permissions required (normally Contents read/write and Metadata read). Revoke any token that may have been exposed.
+- IDEDITOR remains a browser-only application. Memory-only credentials reduce persistence, but they are not a substitute for a backend secret vault: malicious JavaScript executing in the editor's own origin could still access in-memory credentials. Use trusted deployments and trusted browser sessions.

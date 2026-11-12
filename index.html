@@ -9,6 +9,7 @@
   <link rel="manifest" href="manifest.json">
   <!-- Markdown & Syntax Highlighting for AI -->
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/vs2015.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.4.17/purify.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/11.1.1/marked.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
   <link rel="stylesheet" href="style.css">
@@ -258,7 +259,7 @@
                 </button>
               </div>
             </div>
-            <iframe id="preview"></iframe>
+            <iframe id="preview" sandbox="allow-scripts" referrerpolicy="no-referrer" title="Live code preview"></iframe>
           </div>
         </div>
 
@@ -339,12 +340,12 @@
     <div class="modal-content">
       <h3>Git Settings</h3>
       <input type="text" id="gitRepoUrl" placeholder="https://github.com/user/repo.git" class="git-input">
-      <input type="password" id="gitToken" placeholder="Personal Access Token (repo scope)" class="git-input">
+      <input type="password" id="gitToken" autocomplete="off" placeholder="Fine-grained GitHub PAT (Contents: read/write)" class="git-input">
       <div class="modal-buttons">
         <button class="btn primary" id="btnGitSaveSettings">Save &amp; Sync</button>
         <button class="btn" id="btnGitCloseSettings">Close</button>
       </div>
-      <p class="modal-note">Token is stored securely in your browser and Firebase (if logged in).</p>
+      <p class="modal-note">GitHub token stays in memory for this tab only. It is not saved to browser storage or Firebase.</p>
     </div>
   </div>
 
@@ -401,7 +402,7 @@
         <button class="btn primary" id="btnSaveAISettings">Save Settings</button>
         <button class="btn" id="btnCloseAISettings">Close</button>
       </div>
-      <p class="modal-note">Keys are stored securely in your browser's local storage. They are only sent to the official provider APIs.</p>
+      <p class="modal-note">AI provider keys stay in memory for this tab only. They are not saved to browser storage or Firebase.</p>
     </div>
   </div>
 

@@ -20,7 +20,9 @@ const THEME_KEY    = 'idEditor.theme';
 const FONTSIZE_KEY = 'idEditor.fontSize';
 const SIDEBAR_KEY  = 'idEditor.sidebarHidden';
 const GIT_URL_KEY  = 'idEditor.gitRepo';
-const GIT_TOKEN_KEY = 'idEditor.gitToken';
+const GIT_TOKEN_KEY = 'idEditor.gitToken'; // Legacy key; cleared during startup.
+let gitTokenSession = '';
+localStorage.removeItem(GIT_TOKEN_KEY);
 const GIT_BRANCH_KEY = 'idEditor.gitBranch';
 const MINIMAP_KEY = 'idEditor.minimap';
 
@@ -207,7 +209,7 @@ function wireProjectsUI() {
     const url = prompt('Enter GitHub Repository URL (e.g., https://github.com/octocat/Hello-World.git):');
     if (!url || !url.trim()) return;
     
-    const token = localStorage.getItem(GIT_TOKEN_KEY);
+    const token = gitTokenSession;
     if (!token) {
       alert('You need a Personal Access Token (PAT) to clone. Please set it in the Git Settings (Gear icon in sidebar) first.');
       return;
@@ -353,14 +355,23 @@ async function loadFromCloud() {
 
 async function loadGitSettingsFromCloud(uid) {
   try {
-    const { doc, getDoc } = await import('https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js');
-    const docSnap = await getDoc(doc(fbDb, 'users', uid, 'settings', 'git'));
+    const { doc, getDoc, setDoc, deleteField } = await import('https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js');
+    const settingsRef = doc(fbDb, 'users', uid, 'settings', 'git');
+    const docSnap = await getDoc(settingsRef);
     if (docSnap.exists()) {
       const data = docSnap.data();
       if (data.url) localStorage.setItem(GIT_URL_KEY, data.url);
-      if (data.token) localStorage.setItem(GIT_TOKEN_KEY, data.token);
       document.getElementById('gitRepoUrl').value = data.url || '';
-      document.getElementById('gitToken').value = data.token || '';
+      document.getElementById('gitToken').value = '';
+
+      // Remove tokens written by older IDEDITOR versions.
+      if (Object.prototype.hasOwnProperty.call(data, 'token')) {
+        try {
+          await setDoc(settingsRef, { token: deleteField(), updatedAt: new Date().toISOString() }, { merge: true });
+        } catch (cleanupError) {
+          console.warn('Could not remove a legacy Git token from Firebase settings.');
+        }
+      }
       updateGitStatus();
     }
   } catch (e) { console.warn('Failed to load Git settings'); }
@@ -1055,7 +1066,15 @@ function addConsoleLine(type, msg) {
   if (type === 'error' && bottomPanel.classList.contains('hidden')) { bottomPanel.classList.remove('hidden'); setActivePanel('console'); if (editor) editor.layout(); }
   consoleEl.scrollTop = consoleEl.scrollHeight;
 }
-window.addEventListener('message', e => { const d = e.data; if (!d || d.__preview !== true) return; addConsoleLine(d.type, d.msg); });
+window.addEventListener('message', event => {
+  const preview = document.getElementById('preview');
+  if (!preview || event.source !== preview.contentWindow) return;
+  const data = event.data;
+  if (!data || typeof data !== 'object' || Array.isArray(data) || data.__preview !== true) return;
+  if (!['log', 'info', 'warn', 'error'].includes(data.type)) return;
+  if (typeof data.msg !== 'string') return;
+  addConsoleLine(data.type, data.msg.slice(0, 5000));
+});
 
 function buildDoc(html, css, js) {
   const openScript = '<scr' + 'ipt>', closeScript = '</scr' + 'ipt>';
@@ -1092,7 +1111,7 @@ function wirePreviewControls() {
    ========================================================= */
 
 function getRepoConfig() {
-  return { url: localStorage.getItem(GIT_URL_KEY) || '', token: localStorage.getItem(GIT_TOKEN_KEY) || '' };
+  return { url: localStorage.getItem(GIT_URL_KEY) || '', token: gitTokenSession };
 }
 
 function parseGitHubUrl(url) {
@@ -1270,36 +1289,46 @@ async function updateGitStatus() {
 }
 
 function wireGitUI() {
+  const tokenInput = document.getElementById('gitToken');
+  const settingsModal = document.getElementById('gitSettingsModal');
+
   document.getElementById('btnGitSettings').addEventListener('click', () => {
-    const { url, token } = getRepoConfig();
+    const { url } = getRepoConfig();
     document.getElementById('gitRepoUrl').value = url;
-    document.getElementById('gitToken').value = token;
-    document.getElementById('gitSettingsModal').style.display = 'flex';
+    tokenInput.value = gitTokenSession;
+    settingsModal.style.display = 'flex';
   });
 
   document.getElementById('btnGitSaveSettings').addEventListener('click', async () => {
     const url = document.getElementById('gitRepoUrl').value.trim();
-    const token = document.getElementById('gitToken').value.trim();
+    gitTokenSession = tokenInput.value.trim();
     localStorage.setItem(GIT_URL_KEY, url);
-    localStorage.setItem(GIT_TOKEN_KEY, token);
-    
+    tokenInput.value = '';
+
+    // Never persist GitHub credentials in localStorage or Firebase.
     if (firebaseEnabled && fbUser) {
       try {
         const { doc, setDoc } = await import('https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js');
-        await setDoc(doc(fbDb, 'users', fbUser.uid, 'settings', 'git'), { url, token, updatedAt: new Date().toISOString() }, { merge: true });
-        addTermLine('Git settings saved to Cloud', 'success');
-      } catch (e) { addTermLine('Failed to save Git settings to cloud', 'error'); }
+        await setDoc(doc(fbDb, 'users', fbUser.uid, 'settings', 'git'), {
+          url,
+          updatedAt: new Date().toISOString()
+        }, { merge: true });
+        addTermLine('Git repository settings saved to Cloud. Token remains in this tab only.', 'success');
+      } catch (e) { addTermLine('Failed to save Git repository settings to cloud', 'error'); }
     }
-    document.getElementById('gitSettingsModal').style.display = 'none';
-    showToast('Git settings saved');
+    settingsModal.style.display = 'none';
+    showToast('Git settings saved for this tab');
     updateGitStatus();
   });
 
-  document.getElementById('btnGitCloseSettings').addEventListener('click', () => document.getElementById('gitSettingsModal').style.display = 'none');
-  document.getElementById('btnGitCommit').addEventListener('click', gitCommit); 
+  document.getElementById('btnGitCloseSettings').addEventListener('click', () => {
+    tokenInput.value = '';
+    settingsModal.style.display = 'none';
+  });
+  document.getElementById('btnGitCommit').addEventListener('click', gitCommit);
   document.getElementById('btnGitPush').addEventListener('click', gitPush);
-  document.getElementById('btnGitPull').addEventListener('click', gitClone); 
-  
+  document.getElementById('btnGitPull').addEventListener('click', gitClone);
+
   document.getElementById('gitBranchSelect').addEventListener('change', (e) => {
     const branch = e.target.value;
     if (branch) {
@@ -1309,10 +1338,14 @@ function wireGitUI() {
       }
     }
   });
-  
-  document.getElementById('btnGitGraph').addEventListener('click', () => { document.getElementById('gitGraphContainer').style.display = 'block'; renderGitGraph(); });
-  document.getElementById('btnGitCloseGraph').addEventListener('click', () => document.getElementById('gitGraphContainer').style.display = 'none');
-  
+
+  document.getElementById('btnGitGraph').addEventListener('click', () => {
+    document.getElementById('gitGraphContainer').style.display = 'block';
+    renderGitGraph();
+  });
+  document.getElementById('btnGitCloseGraph').addEventListener('click', () => {
+    document.getElementById('gitGraphContainer').style.display = 'none';
+  });
   updateGitStatus();
 }
 

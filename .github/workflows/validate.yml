@@ -1,0 +1,32 @@
+name: IDEDITOR validation
+
+on:
+  push:
+    branches:
+      - main
+      - features/improvements
+      - security/**
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  static-validation:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Validate JavaScript syntax
+        run: |
+          node --check script.js
+          node --check ai-agents.js
+          node --check tests/security-smoke.mjs
+      - name: Run security smoke tests
+        run: node tests/security-smoke.mjs
