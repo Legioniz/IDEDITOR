@@ -367,13 +367,13 @@ async function loadFromCloud() {
     const activeProject = currentProject();
     const activeFiles = activeId ? collectWorkspaceFiles() : {};
     const activeHasUnsavedChanges = Boolean(activeId && !window.IDEditorCore.sameFileSnapshots(activeFiles, savedSnapshot));
-    let newProjects = { ...projectsData }, activeCloudFiles = null, skippedActive = false;
+    let newProjects = { ...projectsData }, activeCloudFiles = null, skippedLocalWork = false;
     querySnapshot.forEach((docSnap) => {
       const data = docSnap.data();
       const normalizedFiles = window.IDEditorCore.normalizeProjectFiles(data.files || {});
       const isActive = docSnap.id === activeId;
       if (!window.IDEditorCore.shouldApplyCloudProject(isActive, activeHasUnsavedChanges, Boolean(activeProject && activeProject.pendingCommit))) {
-        skippedActive = true;
+        skippedLocalWork = true;
         return;
       }
       const parsedDate = Date.parse(data.updatedAt || '');
@@ -393,8 +393,8 @@ async function loadFromCloud() {
     if (activeCloudFiles) applyWorkspaceFiles(activeCloudFiles);
     saveProjectsToStorage();
     renderProjectsDashboard();
-    showToast(skippedActive
-      ? 'Cloud projects loaded. Active project preserved because it has unsaved or staged work.'
+    showToast(skippedLocalWork
+      ? 'Cloud projects loaded. Projects with unsaved or staged work kept their local version.'
       : 'Cloud projects loaded! Check Dashboard.');
   } catch (e) {
     console.error('Cloud load failed:', e);
