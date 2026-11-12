@@ -89,7 +89,7 @@ Simulated shell with commands: `help`, `ls`, `cat`, `touch`, `mkdir`,
 - Responsive mobile layout with a touch-friendly action bar.
 - Offline application-shell caching; previously loaded version-pinned Monaco, syntax-highlighting, Firebase, and worker resources are cached opportunistically after first use. First-time offline use still requires an initial online load.
 - Project files and Git tracking data are stored as individual IndexedDB project records; autosave updates only the active project instead of serializing the entire workspace into localStorage. Theme and editor preferences remain in localStorage.
-- On first launch after this update, existing `idEditor.projectsData` content is merged into IndexedDB in a transaction. Newer legacy project versions and missing projects are recovered; existing newer IndexedDB records are retained. The legacy backup is removed only after the database transaction succeeds. If IndexedDB is unavailable, IDEDITOR falls back to the legacy localStorage format, records deletion tombstones, and displays a warning so deleted projects do not reappear when IndexedDB recovers.
+- On first launch after this update, existing `idEditor.projectsData` content is merged into IndexedDB in a transaction. Newer legacy project versions and missing projects are recovered; existing newer IndexedDB records are retained. The legacy backup is removed only after the database transaction succeeds. If IndexedDB is unavailable and a valid legacy backup exists, IDEDITOR falls back to localStorage and records deletion tombstones. If IndexedDB becomes unavailable after a successful migration with no remaining legacy backup, startup stops with a recovery warning rather than creating an empty workspace; do not clear the site's browser data.
 
 ---
 
@@ -101,6 +101,7 @@ Simulated shell with commands: `help`, `ls`, `cat`, `touch`, `mkdir`,
 - GitHub Personal Access Tokens and AI provider API keys are memory-only. They are not persisted to local storage or Firebase.
 - Older locally stored credential values are removed during app startup. Sign in to Firebase once after updating so IDEDITOR can remove a legacy Git token field from your cloud settings.
 - Legacy project data is migrated to IndexedDB before the old localStorage copy is removed; the migration is transactional and retains the legacy copy if it fails.
+- Pending autosaves are flushed on tab hide, `pagehide`, and `beforeunload`; IndexedDB writes are asynchronous, so use the visible save action before force-closing the browser during heavy editing.
 - Project switching normalizes older string-only file records into `{ lang, content }` entries to preserve saved contents.
 - GitHub Pull uses a three-way merge; overlapping changes stop the operation without modifying the workspace.
 - Cloud imports preserve any project with a staged commit and protect the active project when it has unsaved editor changes. Other safe-to-replace cloud projects can still load, and imported project records retain local Git tracking metadata.
