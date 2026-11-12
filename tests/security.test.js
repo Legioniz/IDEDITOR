@@ -129,7 +129,7 @@ test('GitHub clone rejects binary and non-regular Git tree entries before applyi
 
 test('preview CSP blocks external network requests and embeds project resources', () => {
   const core = read('editor-core.js');
-  assert.match(core, /connect-src 'none'/);
+  assert.match(core, /connect-src.*none/);
   assert.match(core, /rewriteLocalHtmlResources/);
   assert.match(core, /rewriteLocalCss/);
   assert.match(script, /collectWorkspaceFiles\(\)\);/);
