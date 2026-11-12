@@ -25,7 +25,8 @@
 
   function projectTimestamp(project) {
     const value = project && project.updatedAt;
-    if (typeof value === 'number' && Number.isFinite(value)) return value;
+    const numeric = typeof value === 'number' ? value : Number(value);
+    if (value !== null && value !== undefined && value !== '' && Number.isFinite(numeric)) return numeric;
     const parsed = Date.parse(value || '');
     return Number.isFinite(parsed) ? parsed : 0;
   }
@@ -188,11 +189,9 @@
       const currentRequest = metaStore.get('currentProjectId');
       currentRequest.onsuccess = () => {
         const storedId = currentRequest.result && currentRequest.result.value;
-        const selectedId = storedId || (
-          legacy.currentProjectId && Object.prototype.hasOwnProperty.call(legacy.projects, legacy.currentProjectId)
-            ? legacy.currentProjectId
-            : null
-        );
+        // Retain the existing selection when possible; otherwise let the
+        // normal startup validator choose the first project if this ID is stale.
+        const selectedId = storedId || legacy.currentProjectId || null;
         metaStore.put({ key: 'currentProjectId', value: selectedId });
       };
 
@@ -249,7 +248,13 @@
           ? orderRequest.result.value.slice()
           : [];
         Object.entries(state.projects || {}).forEach(([id, project]) => {
-          projectStore.put({ id, project: clone(project) });
+          const request = projectStore.get(id);
+          request.onsuccess = () => {
+            const existing = request.result && request.result.project;
+            if (!existing || projectTimestamp(project) >= projectTimestamp(existing)) {
+              projectStore.put({ id, project: clone(project) });
+            }
+          };
           if (!order.includes(id)) order.push(id);
         });
         metaStore.put({ key: 'projectOrder', value: order });
