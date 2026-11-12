@@ -20,7 +20,9 @@ const THEME_KEY    = 'idEditor.theme';
 const FONTSIZE_KEY = 'idEditor.fontSize';
 const SIDEBAR_KEY  = 'idEditor.sidebarHidden';
 const GIT_URL_KEY  = 'idEditor.gitRepo';
-const GIT_TOKEN_KEY = 'idEditor.gitToken';
+const GIT_TOKEN_KEY = 'idEditor.gitToken'; // Legacy key; removed during migration.
+let volatileGitToken = '';
+try { localStorage.removeItem(GIT_TOKEN_KEY); } catch (error) { /* Storage may be unavailable. */ }
 const GIT_BRANCH_KEY = 'idEditor.gitBranch';
 const MINIMAP_KEY = 'idEditor.minimap';
 
@@ -353,17 +355,24 @@ async function loadFromCloud() {
 
 async function loadGitSettingsFromCloud(uid) {
   try {
-    const { doc, getDoc } = await import('https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js');
-    const docSnap = await getDoc(doc(fbDb, 'users', uid, 'settings', 'git'));
+    const { doc, getDoc, updateDoc, deleteField } = await import('https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js');
+    const settingsRef = doc(fbDb, 'users', uid, 'settings', 'git');
+    const docSnap = await getDoc(settingsRef);
     if (docSnap.exists()) {
       const data = docSnap.data();
       if (data.url) localStorage.setItem(GIT_URL_KEY, data.url);
-      if (data.token) localStorage.setItem(GIT_TOKEN_KEY, data.token);
+      if (Object.prototype.hasOwnProperty.call(data, 'token')) {
+        try { await updateDoc(settingsRef, { token: deleteField() }); } catch (cleanupError) {
+          console.warn('Legacy Firebase Git token cleanup could not complete.');
+        }
+      }
       document.getElementById('gitRepoUrl').value = data.url || '';
-      document.getElementById('gitToken').value = data.token || '';
+      document.getElementById('gitToken').value = volatileGitToken;
       updateGitStatus();
     }
-  } catch (e) { console.warn('Failed to load Git settings'); }
+  } catch (error) {
+    console.warn('Failed to load Git settings');
+  }
 }
 
 /* =========================================================
@@ -1055,7 +1064,15 @@ function addConsoleLine(type, msg) {
   if (type === 'error' && bottomPanel.classList.contains('hidden')) { bottomPanel.classList.remove('hidden'); setActivePanel('console'); if (editor) editor.layout(); }
   consoleEl.scrollTop = consoleEl.scrollHeight;
 }
-window.addEventListener('message', e => { const d = e.data; if (!d || d.__preview !== true) return; addConsoleLine(d.type, d.msg); });
+const PREVIEW_MESSAGE_TYPES = new Set(['log', 'info', 'warn', 'error']);
+window.addEventListener('message', (event) => {
+  const frame = document.getElementById('preview');
+  const data = event.data;
+  if (!frame || event.source !== frame.contentWindow) return;
+  if (!data || typeof data !== 'object' || Array.isArray(data) || data.__preview !== true) return;
+  if (!PREVIEW_MESSAGE_TYPES.has(data.type) || typeof data.msg !== 'string') return;
+  addConsoleLine(data.type, data.msg.slice(0, 5000));
+});
 
 function buildDoc(html, css, js) {
   const openScript = '<scr' + 'ipt>', closeScript = '</scr' + 'ipt>';
@@ -1080,7 +1097,24 @@ function wirePreviewControls() {
   function setFullscreen(on) { outputPane.classList.toggle('fullscreen', on); if (on) outputPane.classList.add('show'); btnFullscreen.classList.toggle('on', on); btnFullscreen.title = on ? 'Exit fullscreen' : 'Fullscreen preview'; }
   btnFullscreen.addEventListener('click', () => setFullscreen(!outputPane.classList.contains('fullscreen')));
   document.addEventListener('keydown', e => { if (e.key === 'Escape' && outputPane.classList.contains('fullscreen')) setFullscreen(false); });
-  btnOpen.addEventListener('click', () => { const blob = new Blob([buildDoc(models['index.html'] ? models['index.html'].getValue() : '', models['style.css'] ? models['style.css'].getValue() : '', models['script.js'] ? models['script.js'].getValue() : '')], { type: 'text/html' }); const url = URL.createObjectURL(blob); const w = window.open(url, '_blank'); setTimeout(() => URL.revokeObjectURL(url), 60000); if (!w) alert('Popup blocked'); });
+  btnOpen.addEventListener('click', () => {
+    const html = buildDoc(
+      models['index.html'] ? models['index.html'].getValue() : '',
+      models['style.css'] ? models['style.css'].getValue() : '',
+      models['script.js'] ? models['script.js'].getValue() : ''
+    );
+    const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'ideditor-preview.html';
+    link.rel = 'noopener';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    showToast('Preview HTML downloaded');
+  });
   let autoOn = false, autoTimer = null;
   btnAuto.addEventListener('click', () => { autoOn = !autoOn; btnAuto.classList.toggle('on', autoOn); if (autoOn) run(); });
   const hookAuto = (m) => m.onDidChangeContent(() => { if (!autoOn) return; clearTimeout(autoTimer); autoTimer = setTimeout(run, 600); });
@@ -1092,13 +1126,19 @@ function wirePreviewControls() {
    ========================================================= */
 
 function getRepoConfig() {
-  return { url: localStorage.getItem(GIT_URL_KEY) || '', token: localStorage.getItem(GIT_TOKEN_KEY) || '' };
+  return { url: localStorage.getItem(GIT_URL_KEY) || '', token: volatileGitToken };
 }
 
 function parseGitHubUrl(url) {
-  const match = url.match(/github\.com\/([^\/]+)\/([^\/\.]+)/);
-  if (!match) return null;
-  return { owner: match[1], repo: match[2] };
+  try {
+    const parsed = new URL(String(url || '').trim());
+    if (parsed.protocol !== 'https:' || !['github.com', 'www.github.com'].includes(parsed.hostname.toLowerCase())) return null;
+    const parts = parsed.pathname.replace(/\/+$/, '').replace(/\.git$/i, '').split('/').filter(Boolean);
+    if (parts.length !== 2 || !parts.every(part => /^[a-zA-Z0-9_.-]+$/.test(part))) return null;
+    return { owner: parts[0], repo: parts[1] };
+  } catch (error) {
+    return null;
+  }
 }
 
 function encodeBase64(str) { return btoa(unescape(encodeURIComponent(str))); }
@@ -1142,7 +1182,8 @@ async function gitClone() {
   const branch = selectedBranch || repoData.default_branch || 'main';
   localStorage.setItem(GIT_BRANCH_KEY, branch);
 
-  const treeRes = await fetch(`https://api.github.com/repos/${parsed.owner}/${parsed.repo}/git/trees/${branch}?recursive=1`, { headers });
+  const branchPath = encodeURIComponent(branch);
+  const treeRes = await fetch(`https://api.github.com/repos/${parsed.owner}/${parsed.repo}/git/trees/${branchPath}?recursive=1`, { headers });
   if (!treeRes.ok) throw new Error(`GitHub API: ${treeRes.status} ${treeRes.statusText}`);
   const treeData = await treeRes.json();
   const blobs = treeData.tree.filter(item => item.type === 'blob');
@@ -1183,56 +1224,85 @@ async function gitCommit() { await gitPush(); }
 async function gitPush() {
   const { url, token } = getRepoConfig();
   const parsed = parseGitHubUrl(url);
-  if (!parsed || !token) return showToast('Set repo URL and token in Git Settings');
-  
+  if (!parsed || !token) return showToast('Set a valid repo URL and session token in Git Settings');
+
   const branch = localStorage.getItem(GIT_BRANCH_KEY) || 'main';
-  const headers = { 'Accept': 'application/vnd.github.v3+json', 'Authorization': `token ${token}`, 'Content-Type': 'application/json' };
+  const branchPath = encodeURIComponent(branch);
+  const headers = {
+    'Accept': 'application/vnd.github.v3+json',
+    'Authorization': `Bearer ${token}`,
+    'Content-Type': 'application/json'
+  };
 
   try {
-    let refRes = await fetch(`https://api.github.com/repos/${parsed.owner}/${parsed.repo}/git/ref/heads/${branch}`, { headers });
-    if (!refRes.ok) throw new Error('Failed to fetch latest commit ref');
-    const refData = await refRes.json();
-    const latestCommitSha = refData.object.sha;
+    const refRes = await fetch(`https://api.github.com/repos/${parsed.owner}/${parsed.repo}/git/ref/heads/${branchPath}`, { headers });
+    const refData = await refRes.json().catch(() => ({}));
+    if (!refRes.ok || !refData.object?.sha) {
+      throw new Error(refData.message || 'Failed to fetch the latest branch commit');
+    }
 
+    const latestCommitSha = refData.object.sha;
     const commitRes = await fetch(`https://api.github.com/repos/${parsed.owner}/${parsed.repo}/git/commits/${latestCommitSha}`, { headers });
-    const commitData = await commitRes.json();
-    const baseTreeSha = commitData.tree.sha;
+    const commitData = await commitRes.json().catch(() => ({}));
+    if (!commitRes.ok || !commitData.tree?.sha) {
+      throw new Error(commitData.message || 'Failed to fetch the latest commit tree');
+    }
 
     const treeItems = [];
     for (const [path, model] of Object.entries(models)) {
-      const content = model.getValue();
       const blobRes = await fetch(`https://api.github.com/repos/${parsed.owner}/${parsed.repo}/git/blobs`, {
-        method: 'POST', headers, body: JSON.stringify({ content, encoding: 'utf-8' })
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ content: model.getValue(), encoding: 'utf-8' })
       });
-      if (!blobRes.ok) throw new Error('Failed to upload blob for ' + path);
-      const blobData = await blobRes.json();
+      const blobData = await blobRes.json().catch(() => ({}));
+      if (!blobRes.ok || !blobData.sha) {
+        throw new Error(blobData.message || 'Failed to upload blob for ' + path);
+      }
       treeItems.push({ path, mode: '100644', type: 'blob', sha: blobData.sha });
     }
 
+    if (!treeItems.length) throw new Error('There are no open project files to push');
+
     const newTreeRes = await fetch(`https://api.github.com/repos/${parsed.owner}/${parsed.repo}/git/trees`, {
-      method: 'POST', headers, body: JSON.stringify({ base_tree: baseTreeSha, tree: treeItems })
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ base_tree: commitData.tree.sha, tree: treeItems })
     });
-    const newTreeData = await newTreeRes.json();
+    const newTreeData = await newTreeRes.json().catch(() => ({}));
+    if (!newTreeRes.ok || !newTreeData.sha) {
+      throw new Error(newTreeData.message || 'Failed to create the Git tree');
+    }
 
     const msg = (document.getElementById('gitMessage').value || 'Update from IDEDITOR').trim();
     const newCommitRes = await fetch(`https://api.github.com/repos/${parsed.owner}/${parsed.repo}/git/commits`, {
-      method: 'POST', headers, body: JSON.stringify({ message: msg, tree: newTreeData.sha, parents: [latestCommitSha] })
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ message: msg, tree: newTreeData.sha, parents: [latestCommitSha] })
     });
-    const newCommitData = await newCommitRes.json();
+    const newCommitData = await newCommitRes.json().catch(() => ({}));
+    if (!newCommitRes.ok || !newCommitData.sha) {
+      throw new Error(newCommitData.message || 'Failed to create the commit');
+    }
 
-    const updateRefRes = await fetch(`https://api.github.com/repos/${parsed.owner}/${parsed.repo}/git/refs/heads/${branch}`, {
-      method: 'PATCH', headers, body: JSON.stringify({ sha: newCommitData.sha, force: true })
+    // Never force-update a branch. A concurrent upstream change must cause a safe failure.
+    const updateRefRes = await fetch(`https://api.github.com/repos/${parsed.owner}/${parsed.repo}/git/refs/heads/${branchPath}`, {
+      method: 'PATCH',
+      headers,
+      body: JSON.stringify({ sha: newCommitData.sha, force: false })
     });
-    if (!updateRefRes.ok) throw new Error('Failed to update branch');
+    const updateRefData = await updateRefRes.json().catch(() => ({}));
+    if (!updateRefRes.ok) {
+      throw new Error(updateRefData.message || 'Push rejected; refresh the branch and retry');
+    }
 
     document.getElementById('gitMessage').value = '';
     showToast('Pushed successfully!');
     addTermLine('Push successful', 'success');
-    updateGitStatus();
-
-  } catch (e) {
-    showToast('Push failed: ' + e.message);
-    addTermLine('Push failed: ' + e.message, 'error');
+    await updateGitStatus();
+  } catch (error) {
+    showToast('Push failed: ' + (error.message || 'Unknown GitHub error'));
+    addTermLine('Push failed: ' + (error.message || 'Unknown GitHub error'), 'error');
   }
 }
 
@@ -1280,15 +1350,24 @@ function wireGitUI() {
   document.getElementById('btnGitSaveSettings').addEventListener('click', async () => {
     const url = document.getElementById('gitRepoUrl').value.trim();
     const token = document.getElementById('gitToken').value.trim();
+    if (url && !parseGitHubUrl(url)) {
+      showToast('Enter a valid HTTPS GitHub repository URL');
+      return;
+    }
     localStorage.setItem(GIT_URL_KEY, url);
-    localStorage.setItem(GIT_TOKEN_KEY, token);
-    
+    volatileGitToken = token;
+    try { localStorage.removeItem(GIT_TOKEN_KEY); } catch (error) {}
+
     if (firebaseEnabled && fbUser) {
       try {
-        const { doc, setDoc } = await import('https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js');
-        await setDoc(doc(fbDb, 'users', fbUser.uid, 'settings', 'git'), { url, token, updatedAt: new Date().toISOString() }, { merge: true });
-        addTermLine('Git settings saved to Cloud', 'success');
-      } catch (e) { addTermLine('Failed to save Git settings to cloud', 'error'); }
+        const { doc, setDoc, updateDoc, deleteField } = await import('https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js');
+        const settingsRef = doc(fbDb, 'users', fbUser.uid, 'settings', 'git');
+        await setDoc(settingsRef, { url, updatedAt: new Date().toISOString() }, { merge: true });
+        try { await updateDoc(settingsRef, { token: deleteField() }); } catch (cleanupError) {
+          console.warn('Legacy Firebase Git token cleanup could not complete.');
+        }
+        addTermLine('Repository URL saved to Cloud; token remains in this tab only', 'success');
+      } catch (e) { addTermLine('Failed to save repository URL to cloud', 'error'); }
     }
     document.getElementById('gitSettingsModal').style.display = 'none';
     showToast('Git settings saved');
@@ -1327,7 +1406,7 @@ async function renderGitGraph() {
   const branch = localStorage.getItem(GIT_BRANCH_KEY) || 'main';
 
   try {
-    const res = await fetch(`https://api.github.com/repos/${parsed.owner}/${parsed.repo}/commits?sha=${branch}`, { headers });
+    const res = await fetch(`https://api.github.com/repos/${parsed.owner}/${parsed.repo}/commits?sha=${encodeURIComponent(branch)}`, { headers });
     const commits = await res.json();
     if (!commits.length) return;
     
