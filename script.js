@@ -93,14 +93,18 @@ function saveProjectsToStorage(projectIds) {
     return projectStorage.setCurrentProjectId(currentProjectId).catch(handleProjectStorageError);
   }
 
-  return validIds.reduce((queue, id) => queue.then(() => {
-    return projectStorage.saveProject(
-      id,
-      projectsData[id],
-      id === currentProjectId ? currentProjectId : undefined
-    );
-  }), Promise.resolve()).then(saved => {
-    if (saved === false) return handleProjectStorageError(new Error('No persistent browser storage is available.'));
+  // Snapshot and enqueue every selected project immediately. Deferring the
+  // saveProject calls to a Promise callback could let a deletion enqueue first
+  // and then accidentally recreate the deleted record afterward.
+  const writes = validIds.map(id => projectStorage.saveProject(
+    id,
+    projectsData[id],
+    id === currentProjectId ? currentProjectId : undefined
+  ));
+  return Promise.all(writes).then(results => {
+    if (results.some(saved => saved === false)) {
+      return handleProjectStorageError(new Error('No persistent browser storage is available.'));
+    }
     return true;
   }).catch(handleProjectStorageError);
 }
