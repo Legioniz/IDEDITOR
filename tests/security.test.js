@@ -154,9 +154,9 @@ test('Git clone, pull, and commit wait for local project persistence', () => {
   const commitStart = script.indexOf('async function gitCommit(', pullStart);
   const pushStart = script.indexOf('async function gitPush(', commitStart);
   assert.ok(cloneStart >= 0 && pullStart > cloneStart && commitStart > pullStart && pushStart > commitStart);
-  assert.match(script.slice(cloneStart, pullStart), /await saveProjectsToStorage\(\)/);
-  assert.match(script.slice(pullStart, commitStart), /await saveProjectsToStorage\(\)/);
-  assert.match(script.slice(commitStart, pushStart), /await saveProjectsToStorage\(\)/);
+  assert.match(script.slice(cloneStart, pullStart), /await saveProjectsToStorage\(\[targetProjectId\]\)/);
+  assert.match(script.slice(pullStart, commitStart), /await saveProjectsToStorage\(\[targetProjectId\]\)/);
+  assert.match(script.slice(commitStart, pushStart), /await saveProjectsToStorage\(\[targetProjectId\]\)/);
 });
 
 test('Git push waits for IndexedDB to confirm the updated local workspace', () => {
