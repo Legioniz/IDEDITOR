@@ -23,7 +23,8 @@ const GIT_URL_KEY  = 'idEditor.gitRepo';
 const GIT_TOKEN_KEY = 'idEditor.gitToken'; // Legacy key; removed during migration.
 let volatileGitToken = '';
 try { localStorage.removeItem(GIT_TOKEN_KEY); } catch (error) { /* Storage may be unavailable. */ }
-const GIT_BRANCH_KEY = 'idEditor.gitBranch';
+const GIT_BRANCH_KEY = 'idEditor.gitBranch'; // Legacy global preference; project tracking replaces it.
+try { localStorage.removeItem(GIT_BRANCH_KEY); } catch (error) { /* Storage may be unavailable. */ }
 const MINIMAP_KEY = 'idEditor.minimap';
 
 // AI Storage Keys
@@ -1352,7 +1353,7 @@ async function gitCommit() {
   if (project.pendingCommit) return showToast('Push the staged commit before creating another one.');
   saveCurrentProjectFiles();
   const tracking = projectGitTracking(project);
-  const branch = tracking.branch || (document.getElementById('gitBranchSelect') && document.getElementById('gitBranchSelect').value) || localStorage.getItem(GIT_BRANCH_KEY) || 'main';
+  const branch = tracking.branch || (document.getElementById('gitBranchSelect') && document.getElementById('gitBranchSelect').value) || 'main';
   const message = (document.getElementById('gitMessage').value || 'Update from IDEDITOR').trim();
   project.pendingCommit = { id:generateId(), message, branch, remoteUrl:getRepoConfig().url, files:collectWorkspaceFiles(), createdAt:Date.now() };
   saveProjectsToStorage();
