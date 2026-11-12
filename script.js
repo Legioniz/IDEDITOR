@@ -786,13 +786,15 @@ function renderSidebarFiles() {
   const visibleFiles = filtering
     ? filesList.filter(name => name.toLowerCase().includes(filter))
     : filesList;
-  const tree = {};
+  const tree = Object.create(null);
 
   visibleFiles.forEach(path => {
     const parts = path.split('/');
     let current = tree;
     parts.forEach((part, i) => {
-      if (!current[part]) current[part] = (i === parts.length - 1) ? 'FILE' : {};
+      if (!Object.prototype.hasOwnProperty.call(current, part)) {
+        current[part] = (i === parts.length - 1) ? 'FILE' : Object.create(null);
+      }
       current = current[part];
     });
   });
