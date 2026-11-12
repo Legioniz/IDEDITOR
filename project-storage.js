@@ -13,6 +13,11 @@
 
   function clone(value) {
     if (value === undefined || value === null) return value;
+    // Browser-native structured cloning avoids the JSON stringify/parse
+    // allocation path during autosaves, with JSON as a compatibility fallback.
+    if (typeof structuredClone === 'function') {
+      try { return structuredClone(value); } catch (error) { /* Use the plain-data fallback below. */ }
+    }
     return JSON.parse(JSON.stringify(value));
   }
 
@@ -230,8 +235,10 @@
       await done;
 
       const byId = {};
+      // IndexedDB already returns structured clones, so do not clone each
+      // project a second time while rebuilding the in-memory workspace.
       records.forEach(record => {
-        if (record && typeof record.id === 'string') byId[record.id] = clone(record.project || {});
+        if (record && typeof record.id === 'string') byId[record.id] = record.project || {};
       });
       const storedOrder = orderRecord && Array.isArray(orderRecord.value) ? orderRecord.value : [];
       const order = storedOrder.filter(id => Object.prototype.hasOwnProperty.call(byId, id));
