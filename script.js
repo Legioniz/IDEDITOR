@@ -678,8 +678,14 @@ function markDirtyState(file) {
 let saveTimer = null, hasPendingSave = false;
 function scheduleSave() { hasPendingSave = true; clearTimeout(saveTimer); saveTimer = setTimeout(saveCurrentProjectFiles, 500); }
 function setupSaveFlush() {
-  document.addEventListener('visibilitychange', () => { if (document.hidden && hasPendingSave) saveCurrentProjectFiles(); });
-  window.addEventListener('beforeunload', () => { if (hasPendingSave) saveCurrentProjectFiles(); });
+  const flushPendingProjectSave = () => {
+    if (hasPendingSave) saveCurrentProjectFiles();
+  };
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) flushPendingProjectSave();
+  });
+  window.addEventListener('pagehide', flushPendingProjectSave);
+  window.addEventListener('beforeunload', flushPendingProjectSave);
 }
 
 function renderTabs() {
@@ -1376,7 +1382,12 @@ async function gitClone(options = {}) {
   tracking.remoteUrl = snapshot.remoteUrl; tracking.branch = snapshot.branch;
   tracking.branches[snapshot.branch] = { headSha:snapshot.headSha, files:{ ...snapshot.files } };
   delete project.pendingCommit;
-  saveProjectsToStorage();
+  const persisted = await saveProjectsToStorage();
+  if (!persisted) {
+    showToast('Clone loaded, but local saving failed. Export the project before closing.');
+    addTermLine('Clone loaded in memory; IndexedDB did not confirm the save.', 'error');
+    return false;
+  }
   showToast('Cloned ' + snapshot.owner + '/' + snapshot.repo + ' (' + snapshot.branch + ')');
   addTermLine('Clone complete: ' + Object.keys(snapshot.files).length + ' files', 'success');
   await updateGitStatus();
@@ -1409,7 +1420,12 @@ async function gitPull(branchOverride) {
   applyWorkspaceFiles(mergedFiles);
   tracking.remoteUrl = snapshot.remoteUrl; tracking.branch = snapshot.branch;
   tracking.branches[snapshot.branch] = { headSha:snapshot.headSha, files:{ ...snapshot.files } };
-  saveProjectsToStorage();
+  const persisted = await saveProjectsToStorage();
+  if (!persisted) {
+    showToast('Pull applied in memory, but local saving failed. Export the project before closing.');
+    addTermLine('Pull applied; IndexedDB did not confirm the save.', 'error');
+    return false;
+  }
   showToast('Pulled and synchronized ' + snapshot.branch);
   addTermLine('Pull complete. Non-overlapping local changes were preserved.', 'success');
   await updateGitStatus(); return true;
@@ -1423,7 +1439,12 @@ async function gitCommit() {
   const branch = tracking.branch || (document.getElementById('gitBranchSelect') && document.getElementById('gitBranchSelect').value) || 'main';
   const message = (document.getElementById('gitMessage').value || 'Update from IDEDITOR').trim();
   project.pendingCommit = { id:generateId(), message, branch, remoteUrl:getRepoConfig().url, files:collectWorkspaceFiles(), createdAt:Date.now() };
-  saveProjectsToStorage();
+  const persisted = await saveProjectsToStorage();
+  if (!persisted) {
+    showToast('Commit staged in memory, but could not be saved locally. Export before closing.');
+    addTermLine('Commit staged in memory only; IndexedDB did not confirm the save.', 'error');
+    return false;
+  }
   showToast('Commit saved locally. Push to publish it.');
   addTermLine('Staged local commit: ' + message, 'success'); return true;
 }
@@ -1459,7 +1480,14 @@ async function gitPush() {
     }
     const treeItems = window.IDEditorCore.buildGitTreeEntries(pending.files, baseline.files, blobShas);
     if (!treeItems.length) {
-      delete project.pendingCommit; saveProjectsToStorage(); document.getElementById('gitMessage').value = '';
+      delete project.pendingCommit;
+      const persisted = await saveProjectsToStorage();
+      if (!persisted) {
+        project.pendingCommit = pending;
+        showToast('No remote changes were needed, but the local staged commit could not be cleared.');
+        return false;
+      }
+      document.getElementById('gitMessage').value = '';
       showToast('No changes to push.'); return true;
     }
     const treeResponse = await fetch('https://api.github.com/repos/' + parsed.owner + '/' + parsed.repo + '/git/trees', {
@@ -1478,7 +1506,14 @@ async function gitPush() {
     const updateRefData = await updateRefResponse.json().catch(() => ({}));
     if (!updateRefResponse.ok) throw new Error(updateRefData.message || 'Push rejected because remote branch moved.');
     baseline.headSha = newCommitData.sha; baseline.files = { ...pending.files };
-    delete project.pendingCommit; saveCurrentProjectFiles(); saveProjectsToStorage();
+    delete project.pendingCommit;
+    const persisted = await saveCurrentProjectFiles();
+    if (!persisted) {
+      showToast('GitHub accepted the push, but local sync data could not be saved. Pull before attempting another push.');
+      addTermLine('Remote push succeeded; local IndexedDB persistence failed.', 'error');
+      await updateGitStatus();
+      return false;
+    }
     document.getElementById('gitMessage').value = '';
     showToast('Pushed committed snapshot to ' + branch);
     addTermLine('Push successful: ' + newCommitData.sha.slice(0,7), 'success');
