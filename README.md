@@ -89,7 +89,7 @@ Simulated shell with commands: `help`, `ls`, `cat`, `touch`, `mkdir`,
 - Responsive mobile layout with a touch-friendly action bar.
 - Offline application-shell caching; previously loaded version-pinned Monaco, syntax-highlighting, Firebase, and worker resources are cached opportunistically after first use. First-time offline use still requires an initial online load.
 - Project files and Git tracking data are stored as individual IndexedDB project records; autosave updates only the active project instead of serializing the entire workspace into localStorage. Theme and editor preferences remain in localStorage.
-- On first launch after this update, existing `idEditor.projectsData` content is copied into IndexedDB in one transaction. The legacy localStorage backup is removed only after that transaction succeeds. If IndexedDB is unavailable, IDEDITOR falls back to the legacy localStorage format and displays a warning.
+- On first launch after this update, existing `idEditor.projectsData` content is merged into IndexedDB in a transaction. Newer legacy project versions and missing projects are recovered; existing newer IndexedDB records are retained. The legacy backup is removed only after the database transaction succeeds. If IndexedDB is unavailable, IDEDITOR falls back to the legacy localStorage format, records deletion tombstones, and displays a warning so deleted projects do not reappear when IndexedDB recovers.
 
 ---
 
