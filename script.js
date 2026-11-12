@@ -860,8 +860,11 @@ async function formatCurrent() {
     const model = models[activeFile], code = model.getValue(), formatted = await window.prettier.format(code, { parser, plugins, tabWidth: 2, printWidth: 80, singleQuote: true });
     if (formatted === code) return showToast('Already formatted');
     model.pushEditOperations([], [{ range: model.getFullModelRange(), text: formatted }], () => null); showToast('Formatted');
-  } catch (e) { showToast('Format failed'); }
-}
+  } catch (e) {
+    console.error('Format error:', e);
+    showToast('Format failed: ' + (e.message || 'Unknown error').substring(0, 40));
+  }
+  }
 async function downloadZip() {
   try {
     if (!window.JSZip) await loadScript('https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js');
