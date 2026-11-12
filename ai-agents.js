@@ -354,20 +354,53 @@
 
   // ─── Message rendering ─────────────────────────────────────
   function renderMessage(role, value, meta) {
-    const container = get('aiMessages');
-    if (!container) return null;
-
-    const div = document.createElement('div');
-    div.className = 'ai-msg ai-' + role;
-    if (meta?.error) div.classList.add('ai-error-card');
-
-    if (meta?.agent) {
-      const chip = document.createElement('span');
-      chip.className = 'ai-agent-chip';
-      chip.textContent = meta.agent.name + ' · ' + providerLabel(meta.agent.provider);
-      div.appendChild(chip);
-    }
-
+  const container = get('aiMessages');
+  if (!container) return null;
+  
+  const div = document.createElement('div');
+  div.className = 'ai-msg ai-' + role;
+  if (meta?.error) div.classList.add('ai-error-card');
+  
+  if (meta?.agent) {
+    const chip = document.createElement('span');
+    chip.className = 'ai-agent-chip';
+    chip.textContent = meta.agent.name + ' · ' + providerLabel(meta.agent.provider);
+    div.appendChild(chip);
+  }
+  
+  // NEW: Use Marked.js and Highlight.js if loaded
+  if (typeof window.marked !== 'undefined' && typeof window.hljs !== 'undefined') {
+    const contentDiv = document.createElement('div');
+    contentDiv.className = 'ai-md-content';
+    contentDiv.innerHTML = window.marked.parse(text(value));
+    
+    // Inject Apply buttons into code blocks
+    contentDiv.querySelectorAll('pre code').forEach((codeEl) => {
+      const code = codeEl.textContent;
+      const pre = codeEl.parentElement;
+      
+      // Apply syntax highlighting
+      window.hljs.highlightElement(codeEl);
+      
+      // Wrap in our custom block
+      const block = document.createElement('div');
+      block.className = 'ai-code-block';
+      
+      const actions = document.createElement('div');
+      actions.className = 'ai-code-actions';
+      const applyBtn = document.createElement('button');
+      applyBtn.className = 'btn primary';
+      applyBtn.textContent = '⚡ Apply to Editor';
+      applyBtn.onclick = () => applyCodeAsSuggestion(code, block);
+      actions.appendChild(applyBtn);
+      
+      pre.replaceWith(block);
+      block.append(pre, actions);
+    });
+    
+    div.appendChild(contentDiv);
+  } else {
+    // Fallback if libraries fail to load
     const parts = text(value).split(/(```[\s\S]*?```)/g);
     parts.forEach((part) => {
       if (part.startsWith('```') && part.endsWith('```')) {
@@ -391,20 +424,20 @@
         div.appendChild(paragraph);
       }
     });
-
-    if (meta?.retry) {
-      const retryBtn = document.createElement('button');
-      retryBtn.className = 'btn';
-      retryBtn.textContent = 'Retry';
-      retryBtn.onclick = meta.retry;
-      div.appendChild(retryBtn);
-    }
-
-    container.appendChild(div);
-    container.scrollTop = container.scrollHeight;
-    return div;
   }
-
+  
+  if (meta?.retry) {
+    const retryBtn = document.createElement('button');
+    retryBtn.className = 'btn';
+    retryBtn.textContent = 'Retry';
+    retryBtn.onclick = meta.retry;
+    div.appendChild(retryBtn);
+  }
+  
+  container.appendChild(div);
+  container.scrollTop = container.scrollHeight;
+  return div;
+}
   function clearMessages() {
     const container = get('aiMessages');
     if (container) container.innerHTML = '';

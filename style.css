@@ -1298,3 +1298,12 @@ html[data-theme="light"] .ai-applied-indicator {
     padding: 6px 10px;
   }
 }
+/* Markdown formatting in AI Chat */
+.ai-md-content p { margin: 0 0 10px 0; }
+.ai-md-content table { border-collapse: collapse; width: 100%; margin-bottom: 10px; font-size: 12px; }
+.ai-md-content th, .ai-md-content td { border: 1px solid var(--border); padding: 6px 8px; text-align: left; }
+.ai-md-content th { background: rgba(255,255,255,0.05); font-weight: 600; }
+.ai-md-content code { background: rgba(255,255,255,0.1); padding: 2px 4px; border-radius: 4px; font-family: monospace; font-size: 12px; }
+html[data-theme="light"] .ai-md-content code { background: rgba(0,0,0,0.06); }
+/* Ensure highlight.js background matches our block */
+.ai-code-block pre { margin: 0; background: transparent !important; padding: 0 !important; }
