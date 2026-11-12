@@ -391,3 +391,33 @@ test('background save without a selection change does not steal the active proje
   assert.equal(loaded.currentProjectId, 'first');
   assert.equal(loaded.projects.second.name, 'Second edited');
 });
+
+test('a migrated IndexedDB workspace is not replaced with an empty default when the database later becomes unavailable', async () => {
+  const indexedDB = new FakeIndexedDB();
+  const localStorage = makeLocalStorage();
+  const original = new IDEditorProjectStorage({ indexedDB, localStorage });
+  await original.open();
+  await original.saveProject('saved', {
+    name: 'Migrated workspace',
+    updatedAt: 50,
+    files: { 'index.html': { lang: 'html', content: '<h1>Still here</h1>' } }
+  }, 'saved');
+
+  const unavailableIndexedDB = {
+    open() {
+      const request = {};
+      queueMicrotask(() => {
+        request.error = new Error('database unavailable');
+        if (typeof request.onerror === 'function') request.onerror({ target: request });
+      });
+      return request;
+    }
+  };
+  const unavailable = new IDEditorProjectStorage({ indexedDB: unavailableIndexedDB, localStorage });
+  await assert.rejects(unavailable.open(), /no legacy project backup is available/);
+  assert.equal(localStorage.getItem('idEditor.projectsData'), null);
+
+  const recovered = await new IDEditorProjectStorage({ indexedDB, localStorage }).open();
+  assert.equal(recovered.projects.saved.files['index.html'].content, '<h1>Still here</h1>');
+  assert.equal(recovered.currentProjectId, 'saved');
+});
