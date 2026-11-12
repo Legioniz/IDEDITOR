@@ -23,6 +23,13 @@
     });
   }
 
+  function projectTimestamp(project) {
+    const value = project && project.updatedAt;
+    if (typeof value === 'number' && Number.isFinite(value)) return value;
+    const parsed = Date.parse(value || '');
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+
   function transactionResult(transaction) {
     return new Promise((resolve, reject) => {
       transaction.oncomplete = () => resolve(true);
@@ -133,15 +140,63 @@
 
     async _migrateLegacyData() {
       const legacy = this._readLegacy();
-      const existing = await this._getAllRecords();
-      if (existing.length === 0 && legacy && Object.keys(legacy.projects).length > 0) {
-        await this._writeIndexedDB(legacy);
-        // Delete the old, quota-limited copy only after the IndexedDB transaction commits.
+      if (!legacy || Object.keys(legacy.projects).length === 0) return;
+
+      // Merge rather than discard the fallback: IndexedDB projects absent from the
+      // legacy snapshot are retained, and a legacy project replaces an existing
+      // record only when its timestamp proves the backup is newer.
+      await this._mergeLegacyIntoIndexedDB(legacy);
+
+      // Cleanup is best-effort. A failed remove must never force the app into a
+      // stale localStorage fallback after IndexedDB has already been recovered.
+      try {
         this.localStorage.removeItem(this.legacyKey);
-      } else if (existing.length > 0 && legacy) {
-        // IndexedDB is authoritative after migration; remove only the verified legacy duplicate.
-        this.localStorage.removeItem(this.legacyKey);
+      } catch (error) {
+        this.lastError = error;
       }
+    }
+
+    _mergeLegacyIntoIndexedDB(legacy) {
+      const transaction = this.db.transaction([PROJECT_STORE, META_STORE], 'readwrite');
+      const done = transactionResult(transaction);
+      done.catch(() => {});
+      const projectStore = transaction.objectStore(PROJECT_STORE);
+      const metaStore = transaction.objectStore(META_STORE);
+
+      Object.entries(legacy.projects).forEach(([id, incoming]) => {
+        if (typeof id !== 'string' || !id) return;
+        const request = projectStore.get(id);
+        request.onsuccess = () => {
+          const existing = request.result && request.result.project;
+          if (!existing || projectTimestamp(incoming) > projectTimestamp(existing)) {
+            projectStore.put({ id, project: clone(incoming) });
+          }
+        };
+      });
+
+      const orderRequest = metaStore.get('projectOrder');
+      orderRequest.onsuccess = () => {
+        const order = orderRequest.result && Array.isArray(orderRequest.result.value)
+          ? orderRequest.result.value.slice()
+          : [];
+        Object.keys(legacy.projects).forEach(id => {
+          if (!order.includes(id)) order.push(id);
+        });
+        metaStore.put({ key: 'projectOrder', value: order });
+      };
+
+      const currentRequest = metaStore.get('currentProjectId');
+      currentRequest.onsuccess = () => {
+        const storedId = currentRequest.result && currentRequest.result.value;
+        const selectedId = storedId || (
+          legacy.currentProjectId && Object.prototype.hasOwnProperty.call(legacy.projects, legacy.currentProjectId)
+            ? legacy.currentProjectId
+            : null
+        );
+        metaStore.put({ key: 'currentProjectId', value: selectedId });
+      };
+
+      return done;
     }
 
     async _getAllRecords() {
@@ -188,10 +243,17 @@
       const done = transactionResult(transaction);
       const projectStore = transaction.objectStore(PROJECT_STORE);
       const metaStore = transaction.objectStore(META_STORE);
-      projectStore.clear();
-      const order = Object.keys(state.projects || {});
-      order.forEach(id => projectStore.put({ id, project: clone(state.projects[id]) }));
-      metaStore.put({ key: 'projectOrder', value: order });
+      const orderRequest = metaStore.get('projectOrder');
+      orderRequest.onsuccess = () => {
+        const order = orderRequest.result && Array.isArray(orderRequest.result.value)
+          ? orderRequest.result.value.slice()
+          : [];
+        Object.entries(state.projects || {}).forEach(([id, project]) => {
+          projectStore.put({ id, project: clone(project) });
+          if (!order.includes(id)) order.push(id);
+        });
+        metaStore.put({ key: 'projectOrder', value: order });
+      };
       metaStore.put({ key: 'currentProjectId', value: state.currentProjectId || null });
       return done;
     }
