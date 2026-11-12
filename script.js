@@ -1514,8 +1514,10 @@ function applyWorkspaceFiles(fileSnapshot) {
     filesList.push(path);
   });
   if (!filesList.length) { FILES['index.html'] = { lang:'html', content:DEFAULT_HTML }; filesList.push('index.html'); }
-  filesList.forEach(ensureModel);
   activeFile = filesList.includes(previousFile) ? previousFile : filesList[0];
+  // Load only the file that will be visible. Other workspace files stay in
+  // FILES and are materialized as Monaco models when the user opens them.
+  ensureModel(activeFile);
   renderTabs(); renderSidebarFiles(); switchFile(activeFile); saveCurrentProjectFiles();
 }
 async function gitClone(options = {}) {
