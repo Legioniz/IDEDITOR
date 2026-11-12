@@ -101,7 +101,7 @@ Simulated shell with commands: `help`, `ls`, `cat`, `touch`, `mkdir`,
 - GitHub Personal Access Tokens and AI provider API keys are memory-only. They are not persisted to local storage or Firebase.
 - Older locally stored credential values are removed during app startup. Sign in to Firebase once after updating so IDEDITOR can remove a legacy Git token field from your cloud settings.
 - Legacy project data is migrated to IndexedDB before the old localStorage copy is removed; the migration is transactional and retains the legacy copy if it fails.
-- Pending autosaves are flushed on tab hide, `pagehide`, and `beforeunload`; IndexedDB writes are asynchronous, so use the visible save action before force-closing the browser during heavy editing.
+- Pending autosaves are flushed on tab hide, `pagehide`, and `beforeunload`; IndexedDB writes are asynchronous, so press Ctrl/Cmd+S and wait for the save confirmation before force-closing the browser during heavy editing.
 - Project switching normalizes older string-only file records into `{ lang, content }` entries to preserve saved contents.
 - GitHub Pull uses a three-way merge; overlapping changes stop the operation without modifying the workspace.
 - Cloud imports preserve any project with a staged commit and protect the active project when it has unsaved editor changes. Other safe-to-replace cloud projects can still load, and imported project records retain local Git tracking metadata.
