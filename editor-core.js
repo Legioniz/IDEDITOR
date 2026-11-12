@@ -117,7 +117,7 @@
     const source = rewriteLocalHtmlResources(html || '', files);
     if (/<html[\s>]/i.test(source)) {
       let output = source;
-      if (/<\/head>/i.test(output)) output = output.replace(/<\/head>/i, head + '</head>');
+      if (/<head[\s>]/i.test(output)) output = output.replace(/<head[^>]*>/i, match => match + head);
       else output = output.replace(/<html[^>]*>/i, match => match + '<head>' + head + '</head>');
       if (/<\/body>/i.test(output)) output = output.replace(/<\/body>/i, body + '</body>');
       else output += body;
