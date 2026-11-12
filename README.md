@@ -55,8 +55,9 @@ multi-agent AI assistant — all directly from your browser without any backend.
 
 ### 🐙 GitHub Integration (REST API)
 - Clone public and private repos via Personal Access Token
-- Commit and push changes to any branch
-- Branch selector with live reload on switch
+- **Commit Changes** stages a local snapshot in the current browser project; **Push** publishes that staged snapshot to GitHub.
+- **Pull** uses a three-way merge against the last cloned/pulled snapshot. Non-overlapping local and remote changes are preserved; conflicting files stop the pull without changing the workspace.
+- Branch switching requires confirmation and uses the same safe synchronization path.
 - Commit graph viewer
 
 ### ☁️ Firebase Cloud Sync
@@ -79,9 +80,9 @@ Simulated shell with commands: `help`, `ls`, `cat`, `touch`, `mkdir`,
 - **Share** — generate a compressed URL of the entire project (LZ-String)
 
 ### 📱 PWA
-- Installable on desktop and mobile
-- Responsive mobile layout with a touch-friendly action bar
-- Offline shell caching via service worker
+- Installable on supported desktop and mobile browsers with a scalable SVG app icon.
+- Responsive mobile layout with a touch-friendly action bar.
+- Offline application-shell caching; previously loaded version-pinned Monaco, syntax-highlighting, and Firebase CDN resources are cached opportunistically after first use. First-time offline use still requires an initial online load.
 
 ---
 
@@ -92,6 +93,8 @@ Simulated shell with commands: `help`, `ls`, `cat`, `touch`, `mkdir`,
 - AI Markdown is sanitized against an HTML allowlist before it is inserted into the chat.
 - GitHub Personal Access Tokens and AI provider API keys are memory-only. They are not persisted to local storage or Firebase.
 - Older locally stored credential values are removed during app startup. Sign in to Firebase once after updating so IDEDITOR can remove a legacy Git token field from your cloud settings.
+- Project switching normalizes older string-only file records into `{ lang, content }` entries to preserve saved contents.
+- GitHub Pull uses a three-way merge; overlapping changes stop the operation without modifying the workspace.
 
 ## 🛠️ Tech Stack
 
