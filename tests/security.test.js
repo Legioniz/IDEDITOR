@@ -166,3 +166,16 @@ test('Git push waits for IndexedDB to confirm the updated local workspace', () =
   assert.match(pushBody, /await saveCurrentProjectFiles\(\)/);
   assert.match(pushBody, /GitHub accepted the push, but local sync data could not be saved/);
 });
+
+test('asynchronous Git operations stay bound to the project that started them', () => {
+  const cloneStart = script.indexOf('async function gitClone(');
+  const pullStart = script.indexOf('async function gitPull(', cloneStart);
+  const commitStart = script.indexOf('async function gitCommit(', pullStart);
+  const pushStart = script.indexOf('async function gitPush(', commitStart);
+  assert.match(script.slice(cloneStart, pullStart), /const targetProjectId = currentProjectId/);
+  assert.match(script.slice(cloneStart, pullStart), /currentProjectId !== targetProjectId/);
+  assert.match(script.slice(pullStart, commitStart), /const targetProjectId = currentProjectId/);
+  assert.match(script.slice(pullStart, commitStart), /currentProject\(\) !== project/);
+  assert.match(script.slice(commitStart, pushStart), /saveProjectsToStorage\(\[targetProjectId\]\)/);
+  assert.match(script.slice(pushStart), /saveProjectsToStorage\(\[targetProjectId\]\)/);
+});
