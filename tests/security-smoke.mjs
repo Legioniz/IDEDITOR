@@ -23,4 +23,5 @@ assert.doesNotMatch(script, /settings\/git'\), \{ url, token/);
 assert.match(agents, /apiKey: ''/);
 assert.match(agents, /localStorage\.removeItem\(LEGACY\.key\)/);
 assert.match(agents, /window\.DOMPurify\.sanitize\(renderedMarkdown/);
+assert.match(agents, /Provider API keys stay in memory/);
 console.log('IDEDITOR security smoke tests passed.');
