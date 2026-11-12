@@ -96,9 +96,9 @@ test('preview embeds linked project resources and blocks external network access
   );
   assert.match(output, /Content-Security-Policy/);
   assert.match(output, /connect-src 'none'/);
-  assert.match(output, /data:text\\/css;charset=utf-8/);
-  assert.match(output, /data:image\\/svg\\+xml;charset=utf-8/);
-  assert.match(output, /data:text\\/javascript;charset=utf-8/);
+  assert.match(output, /data:text\/css;charset=utf-8/);
+  assert.match(output, /data:image\/svg\+xml;charset=utf-8/);
+  assert.match(output, /data:text\/javascript;charset=utf-8/);
   assert.match(output, /h1%20%7B%20color%3A%20blue/);
 });
 
