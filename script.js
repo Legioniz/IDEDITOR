@@ -1369,10 +1369,15 @@ function applyWorkspaceFiles(fileSnapshot) {
   renderTabs(); renderSidebarFiles(); switchFile(activeFile); saveCurrentProjectFiles();
 }
 async function gitClone(options = {}) {
+  const targetProjectId = currentProjectId;
   const config = getRepoConfig();
   if (!parseGitHubUrl(config.url)) throw new Error('Invalid GitHub URL');
   await updateGitStatus();
   const snapshot = await fetchGitHubSnapshot(options.branch || null);
+  if (currentProjectId !== targetProjectId || !projectsData[targetProjectId]) {
+    showToast('Clone cancelled because the active project changed. Retry from the intended project.');
+    return false;
+  }
   const localFiles = collectWorkspaceFiles(), defaults = {};
   Object.entries(DEFAULT_FILES).forEach(([path, value]) => { defaults[path] = value.content || ''; });
   const clean = window.IDEditorCore.sameFileSnapshots(localFiles, defaults) || Object.values(localFiles).every(value => !value);
@@ -1382,7 +1387,7 @@ async function gitClone(options = {}) {
   tracking.remoteUrl = snapshot.remoteUrl; tracking.branch = snapshot.branch;
   tracking.branches[snapshot.branch] = { headSha:snapshot.headSha, files:{ ...snapshot.files } };
   delete project.pendingCommit;
-  const persisted = await saveProjectsToStorage();
+  const persisted = await saveProjectsToStorage([targetProjectId]);
   if (!persisted) {
     showToast('Clone loaded, but local saving failed. Export the project before closing.');
     addTermLine('Clone loaded in memory; IndexedDB did not confirm the save.', 'error');
@@ -1394,13 +1399,19 @@ async function gitClone(options = {}) {
   return true;
 }
 async function gitPull(branchOverride) {
+  const targetProjectId = currentProjectId;
   const project = currentProject(), tracking = projectGitTracking(project), config = getRepoConfig();
   if (!project || !tracking || tracking.remoteUrl !== config.url || !tracking.branches[tracking.branch]) {
     showToast('Clone this repository into the project before using Pull.'); return false;
   }
   if (project.pendingCommit) { showToast('Push or clear the staged commit before pulling.'); return false; }
   const targetBranch = branchOverride || tracking.branch || (document.getElementById('gitBranchSelect') && document.getElementById('gitBranchSelect').value) || 'main';
-  const snapshot = await fetchGitHubSnapshot(targetBranch), localFiles = collectWorkspaceFiles();
+  const snapshot = await fetchGitHubSnapshot(targetBranch);
+  if (currentProjectId !== targetProjectId || currentProject() !== project) {
+    showToast('Pull cancelled because the active project changed. Retry from the intended project.');
+    return false;
+  }
+  const localFiles = collectWorkspaceFiles();
   const targetBase = tracking.branches[targetBranch];
   let mergedFiles;
   if (targetBase && targetBase.files) {
@@ -1420,7 +1431,7 @@ async function gitPull(branchOverride) {
   applyWorkspaceFiles(mergedFiles);
   tracking.remoteUrl = snapshot.remoteUrl; tracking.branch = snapshot.branch;
   tracking.branches[snapshot.branch] = { headSha:snapshot.headSha, files:{ ...snapshot.files } };
-  const persisted = await saveProjectsToStorage();
+  const persisted = await saveProjectsToStorage([targetProjectId]);
   if (!persisted) {
     showToast('Pull applied in memory, but local saving failed. Export the project before closing.');
     addTermLine('Pull applied; IndexedDB did not confirm the save.', 'error');
@@ -1431,6 +1442,7 @@ async function gitPull(branchOverride) {
   await updateGitStatus(); return true;
 }
 async function gitCommit() {
+  const targetProjectId = currentProjectId;
   const project = currentProject();
   if (!project) return showToast('No active project');
   if (project.pendingCommit) return showToast('Push the staged commit before creating another one.');
@@ -1439,7 +1451,7 @@ async function gitCommit() {
   const branch = tracking.branch || (document.getElementById('gitBranchSelect') && document.getElementById('gitBranchSelect').value) || 'main';
   const message = (document.getElementById('gitMessage').value || 'Update from IDEDITOR').trim();
   project.pendingCommit = { id:generateId(), message, branch, remoteUrl:getRepoConfig().url, files:collectWorkspaceFiles(), createdAt:Date.now() };
-  const persisted = await saveProjectsToStorage();
+  const persisted = await saveProjectsToStorage([targetProjectId]);
   if (!persisted) {
     showToast('Commit staged in memory, but could not be saved locally. Export before closing.');
     addTermLine('Commit staged in memory only; IndexedDB did not confirm the save.', 'error');
@@ -1449,6 +1461,7 @@ async function gitCommit() {
   addTermLine('Staged local commit: ' + message, 'success'); return true;
 }
 async function gitPush() {
+  const targetProjectId = currentProjectId;
   const project = currentProject(), pending = project && project.pendingCommit;
   const config = getRepoConfig(), parsed = parseGitHubUrl(config.url);
   if (!project || !pending) return showToast('Commit Changes first, then Push.');
@@ -1481,7 +1494,7 @@ async function gitPush() {
     const treeItems = window.IDEditorCore.buildGitTreeEntries(pending.files, baseline.files, blobShas);
     if (!treeItems.length) {
       delete project.pendingCommit;
-      const persisted = await saveProjectsToStorage();
+      const persisted = await saveProjectsToStorage([targetProjectId]);
       if (!persisted) {
         project.pendingCommit = pending;
         showToast('No remote changes were needed, but the local staged commit could not be cleared.');
@@ -1507,7 +1520,9 @@ async function gitPush() {
     if (!updateRefResponse.ok) throw new Error(updateRefData.message || 'Push rejected because remote branch moved.');
     baseline.headSha = newCommitData.sha; baseline.files = { ...pending.files };
     delete project.pendingCommit;
-    const persisted = await saveCurrentProjectFiles();
+    const persisted = currentProjectId === targetProjectId
+      ? await saveCurrentProjectFiles()
+      : await saveProjectsToStorage([targetProjectId]);
     if (!persisted) {
       showToast('GitHub accepted the push, but local sync data could not be saved. Pull before attempting another push.');
       addTermLine('Remote push succeeded; local IndexedDB persistence failed.', 'error');
