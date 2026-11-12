@@ -88,7 +88,8 @@ Simulated shell with commands: `help`, `ls`, `cat`, `touch`, `mkdir`,
 - Installable on supported desktop and mobile browsers with a scalable SVG app icon.
 - Responsive mobile layout with a touch-friendly action bar.
 - Offline application-shell caching; previously loaded version-pinned Monaco, syntax-highlighting, Firebase, and worker resources are cached opportunistically after first use. First-time offline use still requires an initial online load.
-- Browser storage still uses localStorage for project data; large projects may hit quota or performance limits. An IndexedDB-backed storage migration remains future work.
+- Project files and Git tracking data are stored as individual IndexedDB project records; autosave updates only the active project instead of serializing the entire workspace into localStorage. Theme and editor preferences remain in localStorage.
+- On first launch after this update, existing `idEditor.projectsData` content is copied into IndexedDB in one transaction. The legacy localStorage backup is removed only after that transaction succeeds. If IndexedDB is unavailable, IDEDITOR falls back to the legacy localStorage format and displays a warning.
 
 ---
 
@@ -99,6 +100,7 @@ Simulated shell with commands: `help`, `ls`, `cat`, `touch`, `mkdir`,
 - AI Markdown is sanitized against an HTML allowlist before it is inserted into the chat.
 - GitHub Personal Access Tokens and AI provider API keys are memory-only. They are not persisted to local storage or Firebase.
 - Older locally stored credential values are removed during app startup. Sign in to Firebase once after updating so IDEDITOR can remove a legacy Git token field from your cloud settings.
+- Legacy project data is migrated to IndexedDB before the old localStorage copy is removed; the migration is transactional and retains the legacy copy if it fails.
 - Project switching normalizes older string-only file records into `{ lang, content }` entries to preserve saved contents.
 - GitHub Pull uses a three-way merge; overlapping changes stop the operation without modifying the workspace.
 - Cloud imports preserve any project with a staged commit and protect the active project when it has unsaved editor changes. Other safe-to-replace cloud projects can still load, and imported project records retain local Git tracking metadata.
