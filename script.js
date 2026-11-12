@@ -377,8 +377,10 @@ async function loadFromCloud() {
         return;
       }
       const parsedDate = Date.parse(data.updatedAt || '');
+      const localProject = newProjects[docSnap.id] || {};
       newProjects[docSnap.id] = {
-        name: data.name || 'Cloud Project',
+        ...localProject,
+        name: data.name || localProject.name || 'Cloud Project',
         files: normalizedFiles,
         updatedAt: Number.isFinite(parsedDate) ? parsedDate : Date.now()
       };
@@ -1239,7 +1241,9 @@ function currentProject() { return currentProjectId && projectsData[currentProje
 function projectGitTracking(project = currentProject()) {
   if (!project) return null;
   if (!project.gitTracking || typeof project.gitTracking !== 'object') project.gitTracking = { remoteUrl:'', branch:'', branches:{} };
-  if (!project.gitTracking.branches) project.gitTracking.branches = {};
+  if (typeof project.gitTracking.remoteUrl !== 'string') project.gitTracking.remoteUrl = '';
+  if (typeof project.gitTracking.branch !== 'string') project.gitTracking.branch = '';
+  if (!project.gitTracking.branches || typeof project.gitTracking.branches !== 'object') project.gitTracking.branches = {};
   return project.gitTracking;
 }
 async function fetchGitHubSnapshot(branchOverride) {
@@ -1263,7 +1267,7 @@ async function fetchGitHubSnapshot(branchOverride) {
   const treeData = await treeResponse.json().catch(() => ({}));
   if (!treeResponse.ok || treeData.truncated) throw new Error(treeData.message || 'Repository tree is incomplete; no files changed.');
   const entries = treeData.tree || [];
-  const unsupported = entries.find(item => item.type === 'commit' || (item.type === 'blob' && !['100644','100755'].includes(item.mode)));
+  const unsupported = entries.find(item => item.type === 'commit' || (item.type === 'blob' && item.mode !== '100644'));
   if (unsupported) throw new Error('Unsupported Git entry (' + unsupported.mode + ' ' + unsupported.type + '): ' + unsupported.path + '. Clone stopped without changing the project.');
   const blobs = entries.filter(item => item.type === 'blob'), files = {};
   for (const blob of blobs) {
@@ -1431,12 +1435,13 @@ async function updateGitStatus() {
     const branches = await branchResponse.json().catch(() => []);
     if (!branchResponse.ok || !Array.isArray(branches)) throw new Error('Unable to load branches');
     const tracking = projectGitTracking(currentProject());
-    const preferred = (tracking && tracking.remoteUrl === config.url && tracking.branch) || localStorage.getItem(GIT_BRANCH_KEY) || repoData.default_branch;
+    const preferred = (tracking && tracking.remoteUrl === config.url && tracking.branch) || repoData.default_branch;
     branchSelect.innerHTML = '';
     branches.forEach(info => { const option = document.createElement('option'); option.value = info.name; option.textContent = info.name; branchSelect.appendChild(option); });
     branchSelect.value = branches.some(info => info.name === preferred) ? preferred : repoData.default_branch;
     if (!branchSelect.value && branches.length) branchSelect.selectedIndex = 0;
     branchSelect.style.display = branches.length ? 'block' : 'none';
+    branchSelect.dataset.currentBranch = branchSelect.value || repoData.default_branch;
   } catch (error) {
     el.textContent = 'Not connected (' + (error.message || 'API error') + ')'; branchSelect.style.display = 'none';
   }
@@ -1490,7 +1495,7 @@ function wireGitUI() {
   
   document.getElementById('gitBranchSelect').addEventListener('change', (e) => {
     const tracking = projectGitTracking(currentProject());
-    const previousBranch = (tracking && tracking.branch) || localStorage.getItem(GIT_BRANCH_KEY) || 'main';
+    const previousBranch = (tracking && tracking.branch) || e.target.dataset.currentBranch || 'main';
     const selectedBranch = e.target.value;
     if (!selectedBranch || selectedBranch === previousBranch) return;
     if (!confirm('Switch to branch "' + selectedBranch + '" and synchronize it with this project?')) {
