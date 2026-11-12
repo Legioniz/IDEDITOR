@@ -116,7 +116,9 @@ test('Git remotes and branches are scoped to the active project', () => {
 });
 
 test('cloud loading protects dirty active work and keeps local Git metadata', () => {
-  assert.match(script, /sameFileSnapshots\(activeFiles, savedSnapshot\)/);
+  assert.match(script, /const persistedActiveFiles = \{\}/);
+  assert.match(script, /sameFileSnapshots\(activeFiles, persistedActiveFiles\)/);
+  assert.match(script, /pendingProjectWrites\.get\(activeId\)/);
   assert.match(script, /shouldApplyCloudProject/);
   assert.match(script, /activeCloudFiles/);
   assert.match(script, /const localProject = newProjects\[docSnap\.id\] \|\| \{\}/);
