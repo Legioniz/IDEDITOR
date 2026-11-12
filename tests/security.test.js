@@ -143,3 +143,26 @@ test('PWA caches the application shell and declares a scalable icon', () => {
   assert.equal(manifest.icons[0].src, './icon.svg');
   assert.equal(manifest.icons[0].sizes, 'any');
 });
+
+test('project autosaves flush on page lifecycle exit', () => {
+  assert.match(script, /window\.addEventListener\('pagehide', flushPendingProjectSave\)/);
+});
+
+test('Git clone, pull, and commit wait for local project persistence', () => {
+  const cloneStart = script.indexOf('async function gitClone(');
+  const pullStart = script.indexOf('async function gitPull(', cloneStart);
+  const commitStart = script.indexOf('async function gitCommit(', pullStart);
+  const pushStart = script.indexOf('async function gitPush(', commitStart);
+  assert.ok(cloneStart >= 0 && pullStart > cloneStart && commitStart > pullStart && pushStart > commitStart);
+  assert.match(script.slice(cloneStart, pullStart), /await saveProjectsToStorage\(\)/);
+  assert.match(script.slice(pullStart, commitStart), /await saveProjectsToStorage\(\)/);
+  assert.match(script.slice(commitStart, pushStart), /await saveProjectsToStorage\(\)/);
+});
+
+test('Git push waits for IndexedDB to confirm the updated local workspace', () => {
+  const pushStart = script.indexOf('async function gitPush(');
+  const statusStart = script.indexOf('async function updateGitStatus(', pushStart);
+  const pushBody = script.slice(pushStart, statusStart);
+  assert.match(pushBody, /await saveCurrentProjectFiles\(\)/);
+  assert.match(pushBody, /GitHub accepted the push, but local sync data could not be saved/);
+});
