@@ -77,7 +77,8 @@ test('preview builder injects CSS, app code, and console capture', () => {
 });
 
 test('cloud import preserves an active workspace with unsaved or staged work', () => {
-  assert.equal(core.shouldApplyCloudProject(false, true, true), true);
+  assert.equal(core.shouldApplyCloudProject(false, true, true), false);
+  assert.equal(core.shouldApplyCloudProject(false, true, false), true);
   assert.equal(core.shouldApplyCloudProject(true, true, false), false);
   assert.equal(core.shouldApplyCloudProject(true, false, true), false);
   assert.equal(core.shouldApplyCloudProject(true, false, false), true);
