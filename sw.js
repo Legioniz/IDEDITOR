@@ -36,7 +36,9 @@ self.addEventListener('fetch', event => {
       if (cached) return cached;
       try {
         const response = await fetch(request);
-        if (response.ok || response.type === 'opaque') await cache.put(request, response.clone());
+        if (response.ok || response.type === 'opaque') {
+          try { await cache.put(request, response.clone()); } catch (cacheError) {}
+        }
         return response;
       } catch (error) {
         return cached || Response.error();
