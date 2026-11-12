@@ -30,7 +30,7 @@ self.addEventListener('fetch', event => {
     })));
     return;
   }
-  if (CDN_HOSTS.has(url.hostname) && (request.destination === 'script' || request.destination === 'style')) {
+  if (CDN_HOSTS.has(url.hostname) && (['script', 'style', 'worker'].includes(request.destination))) {
     event.respondWith(caches.open(CDN_CACHE).then(async cache => {
       const cached = await cache.match(request);
       if (cached) return cached;
