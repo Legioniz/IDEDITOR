@@ -111,7 +111,8 @@ test('Git remotes and branches are scoped to the active project', () => {
   assert.match(script, /tracking\.branch \|\|/);
   assert.match(script, /projectGitTracking\(currentProject\(\)\)/);
   assert.match(script, /setCurrentProjectRemoteUrl\(url\)/);
-  assert.doesNotMatch(script, /localStorage\.setItem\(GIT_BRANCH_KEY/);
+  assert.doesNotMatch(script, /localStorage\.(?:getItem|setItem)\(GIT_BRANCH_KEY/);
+  assert.match(script, /localStorage\.removeItem\(GIT_BRANCH_KEY\)/);
 });
 
 test('cloud loading protects dirty active work and keeps local Git metadata', () => {
