@@ -1108,18 +1108,7 @@ window.addEventListener('message', (event) => {
 });
 
 function buildDoc(html, css, js) {
-  const openScript = '<scr' + 'ipt>', closeScript = '</scr' + 'ipt>';
-  const consoleHook = `${openScript}(function(){function ser(v){if(typeof v==='string')return v;if(v instanceof Error)return v.message;try{return JSON.stringify(v);}catch(e){return String(v);}}function send(type,args){try{parent.postMessage({__preview:true,type:type,msg:Array.prototype.map.call(args,ser).join(' ')},'*');}catch(e){}}['log','info','warn','error'].forEach(function(t){var orig=console[t]?console[t].bind(console):function(){};console[t]=function(){orig.apply(null,arguments);send(t,arguments);};});window.addEventListener('error',function(e){send('error',[e.message+' @ line '+e.lineno]);});window.addEventListener('unhandledrejection',function(e){send('error',['Unhandled rejection: '+ser(e.reason)]);});})();${closeScript}`;
-  const headInject = consoleHook + '<style>\n' + (css || '') + '\n</style>';
-  const bodyInject = openScript + '\ntry{\n' + (js || '') + '\n}catch(e){ console.error(e && e.message ? e.message : e); }\n' + closeScript;
-  const h = html || '';
-  if (/<html[\s>]/i.test(h)) {
-    let out = h;
-    if (/<\/head>/i.test(out)) out = out.replace(/<\/head>/i, headInject + '</head>'); else out = out.replace(/<html[^>]*>/i, m => m + '<head>' + headInject + '</head>');
-    if (/<\/body>/i.test(out)) out = out.replace(/<\/body>/i, bodyInject + '</body>'); else out += bodyInject;
-    return out;
-  }
-  return '<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">' + headInject + '</head><body>' + h + bodyInject + '</body></html>';
+  return window.IDEditorCore.buildPreviewDocument(html, css, js);
 }
 
 function run() { if (!editor) return; clearConsole(); document.getElementById('outputPane').classList.add('show'); document.getElementById('preview').srcdoc = buildDoc(models['index.html'] ? models['index.html'].getValue() : '', models['style.css'] ? models['style.css'].getValue() : '', models['script.js'] ? models['script.js'].getValue() : ''); }
