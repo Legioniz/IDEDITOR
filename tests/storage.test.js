@@ -306,3 +306,41 @@ test('saveAll upserts projects without erasing records absent from a stale tab s
   assert.equal(loaded.projects.second.name, 'Second');
   assert.equal(loaded.projects['other-tab'].name, 'Created in another tab');
 });
+
+
+test('legacy backup cleanup failure does not force a stale localStorage fallback', async () => {
+  const legacy = {
+    currentProjectId: 'active',
+    projects: { active: { name: 'Backup', updatedAt: 10, files: { 'index.html': { content: 'safe' } } } }
+  };
+  const localStorage = makeLocalStorage({ 'idEditor.projectsData': JSON.stringify(legacy) });
+  const originalRemove = localStorage.removeItem.bind(localStorage);
+  localStorage.removeItem = () => { throw new Error('storage cleanup blocked'); };
+  const indexedDB = new FakeIndexedDB();
+  const storage = new IDEditorProjectStorage({ indexedDB, localStorage });
+
+  const loaded = await storage.open();
+  assert.equal(storage.mode, 'indexedDB');
+  assert.equal(loaded.projects.active.files['index.html'].content, 'safe');
+  assert.match(storage.lastError.message, /cleanup blocked/);
+  assert.notEqual(localStorage.getItem('idEditor.projectsData'), null);
+
+  localStorage.removeItem = originalRemove;
+});
+
+test('bulk persistence does not replace a newer project with an older snapshot', async () => {
+  const indexedDB = new FakeIndexedDB();
+  const storage = new IDEditorProjectStorage({ indexedDB, localStorage: makeLocalStorage() });
+  await storage.open();
+  await storage.saveAll({
+    shared: { name: 'Newest', updatedAt: 500, files: { 'index.html': { content: 'latest' } } }
+  }, 'shared');
+  await storage.saveAll({
+    shared: { name: 'Stale tab', updatedAt: 100, files: { 'index.html': { content: 'old' } } },
+    additional: { name: 'New project', updatedAt: 200, files: {} }
+  }, 'shared');
+
+  const loaded = await new IDEditorProjectStorage({ indexedDB, localStorage: makeLocalStorage() }).open();
+  assert.equal(loaded.projects.shared.files['index.html'].content, 'latest');
+  assert.equal(loaded.projects.additional.name, 'New project');
+});
