@@ -143,7 +143,7 @@
     return { ok:true, result:previous };
   }
   function shouldApplyCloudProject(isActive, hasUnsavedChanges, hasPendingCommit) {
-    return !isActive || (!hasUnsavedChanges && !hasPendingCommit);
+    return !hasPendingCommit && (!isActive || !hasUnsavedChanges);
   }
   function decodeBase64Text(base64, path) {
     const extension = String(path || '').split('.').pop().toLowerCase();
