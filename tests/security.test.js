@@ -10,6 +10,8 @@ const read = (name) => fs.readFileSync(path.join(root, name), 'utf8');
 const html = read('index.html');
 const script = read('script.js');
 const agents = read('ai-agents.js');
+const worker = read('sw.js');
+const manifest = JSON.parse(read('manifest.json'));
 
 test('preview iframe is sandboxed without same-origin privileges', () => {
   const tag = html.match(/<iframe\b[^>]*\bid=["']preview["'][^>]*>/i)?.[0] || '';
@@ -68,4 +70,43 @@ test('local application scripts exist and are referenced', () => {
   assert.match(html, /src=["']ai-agents\.js["']/);
   assert.ok(fs.existsSync(path.join(root, 'script.js')));
   assert.ok(fs.existsSync(path.join(root, 'ai-agents.js')));
+});
+
+test('dashboard clone uses memory-only credentials and supports public repositories', () => {
+  assert.doesNotMatch(script, /localStorage\.getItem\(GIT_TOKEN_KEY\)/);
+  assert.match(script, /gitClone\(\{ replace: true \}\)/);
+});
+
+test('Commit Changes stages locally while Push publishes staged snapshots', () => {
+  const commitStart = script.indexOf('async function gitCommit()');
+  const pushStart = script.indexOf('async function gitPush()', commitStart);
+  const commitBody = script.slice(commitStart, pushStart);
+  const pushBody = script.slice(pushStart, script.indexOf('async function updateGitStatus()', pushStart));
+  assert.match(commitBody, /project\.pendingCommit\s*=/);
+  assert.doesNotMatch(commitBody, /gitPush\(/);
+  assert.match(pushBody, /!project \|\| !pending/);
+  assert.match(pushBody, /canPublishAgainst/);
+  assert.match(pushBody, /buildGitTreeEntries/);
+});
+
+test('Pull uses three-way sync and stops before replacing conflicted files', () => {
+  const pullStart = script.indexOf('async function gitPull(');
+  const pullEnd = script.indexOf('async function gitCommit()', pullStart);
+  const pullBody = script.slice(pullStart, pullEnd);
+  assert.match(pullBody, /mergeFileSnapshots/);
+  assert.match(pullBody, /Pull conflict\. No files changed/);
+  assert.match(pullBody, /applyWorkspaceFiles\(mergedFiles\)/);
+});
+
+test('branch cancellation restores the previous branch selection', () => {
+  assert.match(script, /if \(!confirm\('Switch to branch /);
+  assert.match(script, /e\.target\.value = previousBranch/);
+  assert.match(script, /gitPull\(selectedBranch\)/);
+});
+
+test('PWA caches the application shell and declares a scalable icon', () => {
+  assert.match(worker, /cache\.addAll\(SHELL_ASSETS\)/);
+  assert.match(worker, /ideditor-shell-v2/);
+  assert.equal(manifest.icons[0].src, './icon.svg');
+  assert.equal(manifest.icons[0].sizes, 'any');
 });
