@@ -374,3 +374,20 @@ test('project deletions made in fallback mode do not reappear when IndexedDB rec
   assert.equal(restored.currentProjectId, 'active');
   assert.equal(localStorage.getItem('idEditor.projectsData'), null);
 });
+
+
+test('background save without a selection change does not steal the active project', async () => {
+  const indexedDB = new FakeIndexedDB();
+  const storage = new IDEditorProjectStorage({ indexedDB, localStorage: makeLocalStorage() });
+  await storage.open();
+  await storage.saveAll({
+    first: { name: 'First', updatedAt: 1 },
+    second: { name: 'Second', updatedAt: 2 }
+  }, 'first');
+
+  await storage.saveProject('second', { name: 'Second edited', updatedAt: 3 });
+
+  const loaded = await new IDEditorProjectStorage({ indexedDB, localStorage: makeLocalStorage() }).open();
+  assert.equal(loaded.currentProjectId, 'first');
+  assert.equal(loaded.projects.second.name, 'Second edited');
+});
