@@ -236,14 +236,13 @@ function wireProjectsUI() {
 /* =========================================================
    FIREBASE SETUP
    ========================================================= */
-const firebaseConfig = {
-  apiKey: "AIzaSyADeeUFn-vYEzeT5peaTUD2cT8z92f1Aos",
-  authDomain: "our-story-ca956.firebaseapp.com",
-  projectId: "our-story-ca956",
-  storageBucket: "our-story-ca956.firebasestorage.app",
-  messagingSenderId: "28026494674",
-  appId: "1:28026494674:web:4e65f36f4217269336570b",
-  measurementId: "G-9206ZG2YT2"
+const firebaseConfig = window.IDEDITOR_FIREBASE_CONFIG ?? null;
+const hasFirebaseConfig = (config) => {
+  if (!config || typeof config !== 'object') return false;
+  return ['apiKey', 'authDomain', 'projectId', 'appId'].every((key) => {
+    const value = config[key];
+    return typeof value === 'string' && value.trim() && !value.trim().startsWith('YOUR_');
+  });
 };
 
 let fbAuth = null, fbDb = null, fbUser = null;
@@ -251,6 +250,17 @@ let firebaseEnabled = false;
 let authModule = null; 
 
 async function initFirebase() {
+  if (!hasFirebaseConfig(firebaseConfig)) {
+    const loggedOutUI = document.getElementById('firebaseLoggedOut');
+    if (loggedOutUI && !loggedOutUI.querySelector('.firebase-config-notice')) {
+      const notice = document.createElement('p');
+      notice.className = 'firebase-config-notice';
+      notice.textContent = 'Cloud sync is not configured. Add your own Firebase settings in firebase-config.js to enable Google sign-in.';
+      notice.style.cssText = 'font-size: 11px; line-height: 1.45; opacity: .75; margin: 8px 2px 0;';
+      loggedOutUI.appendChild(notice);
+    }
+    return;
+  }
   try {
     const { initializeApp } = await import('https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js');
     authModule = await import('https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js');
@@ -770,7 +780,8 @@ function wireSidebar() {
   document.getElementById('btnCloudLoad').addEventListener('click', loadFromCloud);
   
   document.getElementById('btnFirebaseLogin').addEventListener('click', async () => {
-    if (!firebaseEnabled || !authModule) return showToast('Firebase loading...');
+    if (!hasFirebaseConfig(firebaseConfig)) return showToast('Add firebase-config.js to enable Firebase cloud sync');
+    if (!firebaseEnabled || !authModule) return showToast('Firebase is still loading...');
     const provider = new authModule.GoogleAuthProvider();
     try {
       await authModule.signInWithPopup(fbAuth, provider);
